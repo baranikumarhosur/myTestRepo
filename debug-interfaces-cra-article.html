@@ -1,0 +1,1044 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Should We Really Disable Every Debug Port? What CRA and RED-DA Actually Expect</title>
+<style>
+  body { font-family: Georgia,'Times New Roman',serif; max-width:900px; margin:0 auto; padding:2rem; line-height:1.8; color:#1a1a1a; background:#fff; }
+  h1  { font-size:2.4rem; line-height:1.2; margin-bottom:0.4rem; }
+  h2  { font-size:1.55rem; margin-top:3rem; border-bottom:3px solid #2c3e50; padding-bottom:0.4rem; color:#2c3e50; }
+  h3  { font-size:1.15rem; margin-top:2rem; color:#333; }
+  h4  { font-size:1rem; margin-top:1.4rem; font-style:italic; color:#555; }
+  p   { margin:1rem 0; }
+  code{ font-family:'Courier New',monospace; background:#f4f4f4; padding:.1em .4em; border-radius:3px; font-size:.88em; }
+  pre { background:#1e1e1e; color:#d4d4d4; padding:1.2rem; border-radius:6px; overflow-x:auto; font-size:.82em; line-height:1.5; margin:1.2rem 0; }
+  pre code{ background:none; padding:0; color:inherit; }
+  blockquote{ border-left:4px solid #c00; margin:1.5rem 0; padding:.8rem 1.2rem; background:#fff5f5; font-style:italic; color:#333; }
+  .cb  { border-left:4px solid #0066cc; background:#f0f7ff; padding:.8rem 1.2rem; margin:1.5rem 0; border-radius:0 6px 6px 0; }
+  .co  { border-left:4px solid #e67e00; background:#fff8f0; padding:.8rem 1.2rem; margin:1.5rem 0; border-radius:0 6px 6px 0; }
+  .cr  { border-left:4px solid #cc0000; background:#fff0f0; padding:.8rem 1.2rem; margin:1.5rem 0; border-radius:0 6px 6px 0; }
+  .cg  { border-left:4px solid #2e7d32; background:#f0fff4; padding:.8rem 1.2rem; margin:1.5rem 0; border-radius:0 6px 6px 0; }
+  .rma-box{ border:2px dashed #cc0000; padding:1rem 1.5rem; margin:2rem 0; border-radius:6px; }
+  .rma-box h3{ color:#cc0000; margin-top:0; }
+  table { border-collapse:collapse; width:100%; margin:1.5rem 0; font-size:.88em; }
+  th   { background:#2c3e50; color:#fff; padding:.7rem 1rem; text-align:left; }
+  td   { padding:.6rem 1rem; border-bottom:1px solid #ddd; vertical-align:top; }
+  tr:nth-child(even){ background:#f9f9f9; }
+  .subtitle { font-size:1.1rem; color:#555; font-style:italic; margin-bottom:2rem; }
+  .author-note{ font-size:.82rem; color:#777; border-top:1px solid #ddd; margin-top:.5rem; padding-top:.5rem; }
+  .toc{ background:#f7f7f7; padding:1.2rem 1.5rem; margin:2rem 0; border-radius:6px; }
+  .toc h3{ margin-top:0; }
+  .toc ol{ margin:0; padding-left:1.5rem; }
+  .toc li{ margin:.3rem 0; font-size:.95rem; }
+  hr  { border:none; border-top:1px solid #ddd; margin:3rem 0; }
+  .vp { font-weight:bold; color:#2e7d32; }
+  .vf { font-weight:bold; color:#cc0000; }
+  .vc { font-weight:bold; color:#e67e00; }
+  .cve-note{ font-size:.8rem; color:#666; font-style:italic; }
+  .svg-wrap{ text-align:center; margin:2rem 0; }
+  .svg-wrap svg{ max-width:100%; height:auto; }
+  .hld-box{ border:2px solid #0066cc; border-radius:8px; padding:1rem 1.4rem; margin:1rem 0; background:#f8fbff; }
+  .hld-box h4{ color:#0066cc; margin-top:0; font-style:normal; font-weight:bold; }
+  .approach-grid{ display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin:1rem 0; }
+  @media(max-width:640px){ .approach-grid{ grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+
+<h1>Should We Really Disable Every Debug Port?</h1>
+<p class="subtitle">What CRA and RED-DA Actually Expect — Security, Usability, and Operability in Renewable Energy IoT Products</p>
+<p class="author-note">A deep-dive for embedded product security teams, firmware engineers, and compliance architects. Based on real production incidents and regulatory analysis.</p>
+
+<!-- ===== TOC ===== -->
+<div class="toc">
+<h3>Table of Contents</h3>
+<ol>
+  <li>The Central Thesis: Controlled Access, Not Blanket Disablement</li>
+  <li>The Regulatory Stack</li>
+  <li>What the Law Actually Says — CRA and RED-DA</li>
+  <li>Not All Debug Interfaces Carry Equal Risk</li>
+  <li>Real-World Reconnaissance: Six Cases Mapped to Threat Categories</li>
+  <li>The U-Boot Bootdelay Case Study (Real Production Incident)</li>
+  <li>Fifteen Engineering Pushbacks — With Authoritative Responses</li>
+  <li>The FST Troubleshooting Scenario — The Hardest Pushback</li>
+  <li>NXP i.MX 93 Crypto-JTAG and EdgeLock DAT (RMA Use Only)</li>
+  <li>Implementing an Authenticated Serial Console — High-Level Architecture</li>
+  <li>Adequate Security: What Is Minimally Required and the SSDL Phased Roadmap</li>
+  <li>The Four-State Device Architecture</li>
+  <li>What Security Teams Should Demand as Evidence</li>
+  <li>Better Requirement Language</li>
+  <li>Compliance Verdict Table</li>
+  <li>Conclusion</li>
+  <li>References</li>
+</ol>
+</div>
+
+<!-- ===== 1 ===== -->
+<h2>1. The Central Thesis: Controlled Access, Not Blanket Disablement</h2>
+
+<p>One of the most persistent and unproductive debates in embedded product security reviews is whether every UART, JTAG, SWD, or serial debug interface must be permanently disabled before a product ships.</p>
+
+<p>The security team's instinct — reduce the attack surface — is correct in direction but often imprecise in prescription. Telling engineering "disable all debug ports" conflates four fundamentally different things: diagnostic log output, interactive console access, bootloader shells, and hardware debug access. Each presents a different threat and allows different levels of operational flexibility.</p>
+
+<div class="cb">
+<strong>Core principle:</strong> CRA and RED-DA require security <em>outcomes</em>. They do not prescribe that every UART, JTAG, SWD, or debug interface must be physically removed or permanently blocked. The right question is not "is this port open or closed?" but "is access to this interface appropriately controlled, authenticated, monitored, and proportionate to the risk it presents?"
+</div>
+
+<!-- Infographic: The Triad -->
+<div class="svg-wrap">
+<svg viewBox="0 0 700 220" xmlns="http://www.w3.org/2000/svg" aria-label="Security Usability Operability Triad">
+  <defs>
+    <radialGradient id="gS" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#1a6bb5"/><stop offset="100%" stop-color="#0d4a8a"/></radialGradient>
+    <radialGradient id="gU" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#2e8b57"/><stop offset="100%" stop-color="#1a5c38"/></radialGradient>
+    <radialGradient id="gO" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#8b2e8b"/><stop offset="100%" stop-color="#5c1a5c"/></radialGradient>
+  </defs>
+  <!-- Triangle lines -->
+  <line x1="350" y1="30" x2="150" y2="185" stroke="#ccc" stroke-width="2" stroke-dasharray="6,4"/>
+  <line x1="350" y1="30" x2="550" y2="185" stroke="#ccc" stroke-width="2" stroke-dasharray="6,4"/>
+  <line x1="150" y1="185" x2="550" y2="185" stroke="#ccc" stroke-width="2" stroke-dasharray="6,4"/>
+  <!-- Centre label -->
+  <ellipse cx="350" cy="120" rx="70" ry="34" fill="#f0f0f0" stroke="#bbb" stroke-width="1.5"/>
+  <text x="350" y="115" text-anchor="middle" font-size="12" fill="#444" font-family="Arial,sans-serif">Adequate</text>
+  <text x="350" y="130" text-anchor="middle" font-size="12" fill="#444" font-family="Arial,sans-serif">Security</text>
+  <!-- Security circle -->
+  <circle cx="350" cy="40" r="40" fill="url(#gS)"/>
+  <text x="350" y="35" text-anchor="middle" font-size="13" font-weight="bold" fill="white" font-family="Arial,sans-serif">Security</text>
+  <text x="350" y="51" text-anchor="middle" font-size="10" fill="#cce" font-family="Arial,sans-serif">Attack surface · Auth · Audit</text>
+  <!-- Usability circle -->
+  <circle cx="145" cy="185" r="44" fill="url(#gU)"/>
+  <text x="145" y="181" text-anchor="middle" font-size="13" font-weight="bold" fill="white" font-family="Arial,sans-serif">Usability</text>
+  <text x="145" y="197" text-anchor="middle" font-size="10" fill="#cec" font-family="Arial,sans-serif">Diagnostic · FST · Support</text>
+  <!-- Operability circle -->
+  <circle cx="555" cy="185" r="44" fill="url(#gO)"/>
+  <text x="555" y="181" text-anchor="middle" font-size="13" font-weight="bold" fill="white" font-family="Arial,sans-serif">Operability</text>
+  <text x="555" y="197" text-anchor="middle" font-size="10" fill="#ece" font-family="Arial,sans-serif">Recovery · OTA · Lifetime</text>
+</svg>
+<p style="font-size:.8rem;color:#888;margin-top:.2rem;">Figure 1 — The three objectives are not competing. A mature product security architecture delivers all three simultaneously.</p>
+</div>
+
+<!-- ===== 2 ===== -->
+<h2>2. The Regulatory Stack</h2>
+
+<div class="svg-wrap">
+<svg viewBox="0 0 720 300" xmlns="http://www.w3.org/2000/svg" aria-label="Regulatory Hierarchy">
+  <defs>
+    <linearGradient id="gReg1" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#1a6bb5"/><stop offset="100%" stop-color="#2980b9"/></linearGradient>
+    <linearGradient id="gReg2" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#16a085"/><stop offset="100%" stop-color="#1abc9c"/></linearGradient>
+    <linearGradient id="gReg3" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#8e44ad"/><stop offset="100%" stop-color="#9b59b6"/></linearGradient>
+    <linearGradient id="gReg4" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#c0392b"/><stop offset="100%" stop-color="#e74c3c"/></linearGradient>
+  </defs>
+  <!-- Tier 1 -->
+  <rect x="60" y="10" width="600" height="52" rx="8" fill="url(#gReg1)"/>
+  <text x="360" y="31" text-anchor="middle" font-size="14" font-weight="bold" fill="white" font-family="Arial,sans-serif">EU Cyber Resilience Act (CRA) — Regulation (EU) 2024/2847</text>
+  <text x="360" y="52" text-anchor="middle" font-size="11" fill="#cde" font-family="Arial,sans-serif">Products with digital elements · Full enforcement Dec 2027 · Vulnerability reporting Sep 2026</text>
+  <!-- arrow -->
+  <line x1="360" y1="62" x2="360" y2="80" stroke="#aaa" stroke-width="2" marker-end="url(#arr)"/>
+  <!-- Tier 2 -->
+  <rect x="100" y="80" width="520" height="52" rx="8" fill="url(#gReg2)"/>
+  <text x="360" y="101" text-anchor="middle" font-size="13" font-weight="bold" fill="white" font-family="Arial,sans-serif">RED Delegated Act (RED-DA) — Regulation (EU) 2022/30</text>
+  <text x="360" y="120" text-anchor="middle" font-size="11" fill="#dfe" font-family="Arial,sans-serif">Radio equipment · Art 3(3)(d)(e)(f) of RED · In force Aug 2025</text>
+  <line x1="360" y1="132" x2="360" y2="150" stroke="#aaa" stroke-width="2"/>
+  <!-- Tier 3 -->
+  <rect x="60" y="150" width="260" height="58" rx="8" fill="url(#gReg3)"/>
+  <text x="190" y="173" text-anchor="middle" font-size="12" font-weight="bold" fill="white" font-family="Arial,sans-serif">EN 18031-1:2024</text>
+  <text x="190" y="192" text-anchor="middle" font-size="10" fill="#ece" font-family="Arial,sans-serif">Internet-connected radio equipment</text>
+  <text x="190" y="204" text-anchor="middle" font-size="10" fill="#ece" font-family="Arial,sans-serif">ACM-5 — SHALL language for privileged i/f</text>
+  <rect x="380" y="150" width="280" height="58" rx="8" fill="url(#gReg3)"/>
+  <text x="520" y="173" text-anchor="middle" font-size="12" font-weight="bold" fill="white" font-family="Arial,sans-serif">ETSI EN 303 645 v2.1.1</text>
+  <text x="520" y="192" text-anchor="middle" font-size="10" fill="#ece" font-family="Arial,sans-serif">Consumer IoT cybersecurity baseline</text>
+  <text x="520" y="204" text-anchor="middle" font-size="10" fill="#ece" font-family="Arial,sans-serif">Clause 5.6 — SHOULD language for debug i/f</text>
+  <!-- Tier 4 -->
+  <rect x="60" y="230" width="260" height="52" rx="8" fill="url(#gReg4)"/>
+  <text x="190" y="251" text-anchor="middle" font-size="11" font-weight="bold" fill="white" font-family="Arial,sans-serif">IEC 62443-4-2:2019</text>
+  <text x="190" y="270" text-anchor="middle" font-size="10" fill="#fee" font-family="Arial,sans-serif">Component security level (SR 7.7 — Least functionality)</text>
+  <rect x="380" y="230" width="280" height="52" rx="8" fill="url(#gReg4)"/>
+  <text x="520" y="251" text-anchor="middle" font-size="11" font-weight="bold" fill="white" font-family="Arial,sans-serif">NIST SP 800-193</text>
+  <text x="520" y="270" text-anchor="middle" font-size="10" fill="#fee" font-family="Arial,sans-serif">Platform firmware resiliency guidelines</text>
+  <!-- connector lines tier3 -->
+  <line x1="190" y1="208" x2="190" y2="230" stroke="#aaa" stroke-width="1.5"/>
+  <line x1="520" y1="208" x2="520" y2="230" stroke="#aaa" stroke-width="1.5"/>
+  <line x1="190" y1="150" x2="190" y2="132" stroke="#aaa" stroke-width="1.5"/>
+  <line x1="520" y1="150" x2="520" y2="132" stroke="#aaa" stroke-width="1.5"/>
+  <line x1="190" y1="132" x2="520" y2="132" stroke="#aaa" stroke-width="1.5"/>
+  <!-- Note -->
+  <text x="360" y="295" text-anchor="middle" font-size="10" fill="#888" font-family="Arial,sans-serif">Neither CRA nor RED-DA text names "UART," "JTAG," or "serial port." Obligations flow through harmonized standards.</text>
+  <!-- arrow marker -->
+  <defs><marker id="arr" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#aaa"/></marker></defs>
+</svg>
+<p style="font-size:.8rem;color:#888;margin-top:.2rem;">Figure 2 — The regulatory hierarchy for renewable energy IoT products. Each layer narrows and operationalizes the one above.</p>
+</div>
+
+<div class="co">
+<strong>Critical nuance:</strong> Neither the CRA text nor the RED-DA text contains the words "UART," "serial port," "JTAG," or "debug interface." The obligation flows through harmonized standards and risk-based principles in Annex I. Saying "CRA says disable UART" to your engineering team is an overstatement that invites justified challenge.
+</div>
+
+<!-- ===== 3 ===== -->
+<h2>3. What the Law Actually Says — CRA and RED-DA</h2>
+
+<h3>3.1 CRA Annex I, Part I — Six Clauses That Matter</h3>
+<table>
+<thead><tr><th>CRA Ref</th><th>Requirement</th><th>Relevance to Debug Interfaces</th></tr></thead>
+<tbody>
+<tr><td>§1(a)</td><td>"Appropriate cybersecurity level based on the risks"</td><td>Risk-based, not prescriptive. A port is not inherently non-compliant; its uncontrolled access is.</td></tr>
+<tr><td><strong>§1(b)</strong></td><td><strong>"Delivered without any known exploitable vulnerabilities"</strong></td><td>Open U-Boot shell with <code>bootdelay=5</code> is a known, exploitable vulnerability. No argument survives this clause.</td></tr>
+<tr><td>§1(d)</td><td>"Protect the confidentiality of stored, transmitted or processed data"</td><td>Logs emitting runtime state, kernel versions, tokens trigger this obligation.</td></tr>
+<tr><td>§1(e)</td><td>"Protect the integrity of data, commands, software and configuration"</td><td>A writable serial console or U-Boot shell allows unsigned firmware injection.</td></tr>
+<tr><td><strong>§1(g)</strong></td><td><strong>"Minimise their own attack surface, including external interfaces"</strong></td><td>The word is <em>minimise</em>, not <em>eliminate</em>. Authenticated, logged debug access has a minimised attack surface.</td></tr>
+<tr><td>§1(i)</td><td>"Record and monitor relevant internal activity"</td><td>A logging obligation — but serial is not mandated as the channel.</td></tr>
+</tbody>
+</table>
+
+<h3>3.2 SHOULD vs SHALL — The Most Important Normative Distinction</h3>
+<p>ETSI EN 303 645 Clause 5.6 uses <strong>SHOULD</strong> throughout its debug interface provisions. EN 18031-1:2024 upgrades the obligation to <strong>SHALL</strong> for interfaces providing privileged access to system resources (bootloader console, root shell, unauthenticated JTAG).</p>
+
+<div class="svg-wrap">
+<svg viewBox="0 0 680 100" xmlns="http://www.w3.org/2000/svg" aria-label="SHOULD vs SHALL obligation scale">
+  <defs><linearGradient id="gObl" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#2ecc71"/><stop offset="50%" stop-color="#f39c12"/><stop offset="100%" stop-color="#e74c3c"/></linearGradient></defs>
+  <rect x="40" y="30" width="600" height="22" rx="11" fill="url(#gObl)"/>
+  <!-- markers -->
+  <line x1="40"  y1="52" x2="40"  y2="70" stroke="#2ecc71" stroke-width="2"/>
+  <line x1="220" y1="52" x2="220" y2="70" stroke="#f39c12" stroke-width="2"/>
+  <line x1="460" y1="52" x2="460" y2="70" stroke="#e67e00" stroke-width="2"/>
+  <line x1="640" y1="52" x2="640" y2="70" stroke="#e74c3c" stroke-width="2"/>
+  <text x="40"  y="85" text-anchor="middle" font-size="10" fill="#2e7d32" font-family="Arial,sans-serif">No requirement</text>
+  <text x="220" y="85" text-anchor="middle" font-size="10" fill="#c07d00" font-family="Arial,sans-serif">SHOULD (EN 303 645)</text>
+  <text x="460" y="85" text-anchor="middle" font-size="10" fill="#c0580b" font-family="Arial,sans-serif">SHOULD with doc'd deviation</text>
+  <text x="640" y="85" text-anchor="middle" font-size="10" fill="#cc0000" font-family="Arial,sans-serif">SHALL (EN 18031-1)</text>
+  <text x="40"  y="22" text-anchor="middle" font-size="9" fill="#666" font-family="Arial,sans-serif">Filtered TX log</text>
+  <text x="220" y="22" text-anchor="middle" font-size="9" fill="#666" font-family="Arial,sans-serif">Raw TX output</text>
+  <text x="460" y="22" text-anchor="middle" font-size="9" fill="#666" font-family="Arial,sans-serif">UART RX open</text>
+  <text x="640" y="22" text-anchor="middle" font-size="9" fill="#cc0000" font-family="Arial,sans-serif">Unauth. JTAG / root shell</text>
+</svg>
+<p style="font-size:.8rem;color:#888;margin-top:.2rem;">Figure 3 — Normative obligation scale from SHOULD to SHALL across the harmonized standards.</p>
+</div>
+
+<!-- ===== 4 ===== -->
+<h2>4. Not All Debug Interfaces Carry Equal Risk</h2>
+
+<p>The most consequential mistake in product security reviews is treating every debug interface as equivalent. The diagram below maps the capability spectrum to realistic threat levels.</p>
+
+<div class="svg-wrap">
+<svg viewBox="0 0 760 260" xmlns="http://www.w3.org/2000/svg" aria-label="Interface risk spectrum">
+  <defs>
+    <linearGradient id="gSpec" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#2ecc71"/>
+      <stop offset="40%" stop-color="#f39c12"/>
+      <stop offset="100%" stop-color="#e74c3c"/>
+    </linearGradient>
+  </defs>
+  <!-- Background bar -->
+  <rect x="20" y="110" width="720" height="40" rx="20" fill="url(#gSpec)" opacity=".85"/>
+  <text x="380" y="134" text-anchor="middle" font-size="12" font-weight="bold" fill="white" font-family="Arial,sans-serif">←  LOWER RISK — — — — — — — — — — — — — — — HIGHER RISK  →</text>
+
+  <!-- Interface labels above and below alternating -->
+  <!-- UART TX filtered -->
+  <line x1="90" y1="110" x2="90" y2="88" stroke="#2e7d32" stroke-width="1.5"/>
+  <rect x="10" y="58" width="160" height="30" rx="5" fill="#2e7d32"/>
+  <text x="90" y="77" text-anchor="middle" font-size="10" fill="white" font-family="Arial,sans-serif">UART TX — Filtered Log</text>
+  <text x="90" y="155" text-anchor="middle" font-size="9" fill="#2e7d32" font-family="Arial,sans-serif">Info disclosure (low)</text>
+
+  <!-- UART TX raw / printk -->
+  <line x1="240" y1="150" x2="240" y2="172" stroke="#f39c12" stroke-width="1.5"/>
+  <rect x="160" y="172" width="160" height="30" rx="5" fill="#f39c12"/>
+  <text x="240" y="191" text-anchor="middle" font-size="10" fill="white" font-family="Arial,sans-serif">UART TX — Raw printk</text>
+  <text x="240" y="108" text-anchor="middle" font-size="9" fill="#c07d00" font-family="Arial,sans-serif">Recon · CVE correlation</text>
+
+  <!-- UART RX / command input -->
+  <line x1="420" y1="110" x2="420" y2="88" stroke="#e67e00" stroke-width="1.5"/>
+  <rect x="340" y="58" width="160" height="30" rx="5" fill="#e67e00"/>
+  <text x="420" y="77" text-anchor="middle" font-size="10" fill="white" font-family="Arial,sans-serif">UART RX — Cmd Input</text>
+  <text x="420" y="155" text-anchor="middle" font-size="9" fill="#e67e00" font-family="Arial,sans-serif">Cmd injection · Config tamper</text>
+
+  <!-- U-Boot console -->
+  <line x1="560" y1="150" x2="560" y2="172" stroke="#c0392b" stroke-width="1.5"/>
+  <rect x="480" y="172" width="160" height="30" rx="5" fill="#c0392b"/>
+  <text x="560" y="191" text-anchor="middle" font-size="10" fill="white" font-family="Arial,sans-serif">U-Boot Console Open</text>
+  <text x="560" y="108" text-anchor="middle" font-size="9" fill="#cc0000" font-family="Arial,sans-serif">Firmware replace · Flash dump</text>
+
+  <!-- JTAG unauthenticated -->
+  <line x1="690" y1="110" x2="690" y2="88" stroke="#8b0000" stroke-width="2"/>
+  <rect x="620" y="52" width="128" height="38" rx="5" fill="#8b0000"/>
+  <text x="684" y="69" text-anchor="middle" font-size="10" fill="white" font-family="Arial,sans-serif">JTAG / SWD</text>
+  <text x="684" y="84" text-anchor="middle" font-size="10" fill="#ffaaaa" font-family="Arial,sans-serif">Unauthenticated</text>
+  <text x="690" y="155" text-anchor="middle" font-size="9" fill="#8b0000" font-family="Arial,sans-serif">Full memory · Boot bypass</text>
+
+  <!-- Recommended actions -->
+  <text x="90"  y="232" text-anchor="middle" font-size="9" fill="#2e7d32" font-family="Arial,sans-serif" font-weight="bold">✔ Allow (filtered)</text>
+  <text x="240" y="232" text-anchor="middle" font-size="9" fill="#c07d00" font-family="Arial,sans-serif" font-weight="bold">⚠ Suppress in prod</text>
+  <text x="420" y="232" text-anchor="middle" font-size="9" fill="#e67e00" font-family="Arial,sans-serif" font-weight="bold">⚠ Disable or auth-gate</text>
+  <text x="560" y="232" text-anchor="middle" font-size="9" fill="#cc0000" font-family="Arial,sans-serif" font-weight="bold">✖ bootdelay=−2</text>
+  <text x="690" y="232" text-anchor="middle" font-size="9" fill="#8b0000" font-family="Arial,sans-serif" font-weight="bold">✖ Fuse off / DAT</text>
+</svg>
+<p style="font-size:.8rem;color:#888;margin-top:.2rem;">Figure 4 — Interface capability spectrum. UART TX and UART RX can be controlled independently — this distinction resolves most of the security–operability tension.</p>
+</div>
+
+<div class="cb"><strong>Key architectural insight:</strong> UART TX (output) and UART RX (input) are independent kernel/driver settings. Retaining sanitised diagnostic log emission while completely blocking command input is straightforward and resolves the majority of the pushbacks below.</div>
+
+<!-- ===== 5 ===== -->
+<h2>5. Real-World Reconnaissance: Six Cases Mapped to Threat Categories</h2>
+
+<p>The claim that serial logs "contain no sensitive information" is frequently used to justify leaving interfaces open. The following cases demonstrate how serial output has enabled real-world attack chains. Not every case has a CVE — but that is <strong>not</strong> because they are configuration or design issues. The CVE Program explicitly accepts configuration weaknesses (CWE-16), insecure defaults (CWE-1188), and missing authentication flaws (CWE-306) as eligible vulnerability types. The reason specific cases here lack CVEs varies: some were resolved through responsible disclosure without a CVE being filed; some are conceptual/research demonstrations without a single named-product scope required for assignment; and some simply were not submitted through the CVE request process. Absence of a CVE does not diminish the exploitability — it reflects a process gap, not a risk gap.</p>
+
+<!-- Cases-to-Threats SVG matrix -->
+<div class="svg-wrap">
+<svg viewBox="0 0 760 400" xmlns="http://www.w3.org/2000/svg" aria-label="Cases to Threats Matrix">
+  <!-- Header row -->
+  <rect x="0" y="0" width="760" height="36" fill="#2c3e50"/>
+  <text x="10"  y="23" font-size="11" font-weight="bold" fill="white" font-family="Arial,sans-serif">Case</text>
+  <text x="220" y="23" font-size="11" font-weight="bold" fill="white" font-family="Arial,sans-serif">Interface</text>
+  <text x="330" y="23" font-size="11" font-weight="bold" fill="white" font-family="Arial,sans-serif">Threat Category</text>
+  <text x="490" y="23" font-size="11" font-weight="bold" fill="white" font-family="Arial,sans-serif">CRA Clause</text>
+  <text x="590" y="23" font-size="11" font-weight="bold" fill="white" font-family="Arial,sans-serif">CVE / Reference</text>
+
+  <!-- Row colours: alternate -->
+  <rect x="0" y="36"  width="760" height="52" fill="#f9f9f9"/>
+  <rect x="0" y="88"  width="760" height="52" fill="#fff"/>
+  <rect x="0" y="140" width="760" height="52" fill="#f9f9f9"/>
+  <rect x="0" y="192" width="760" height="52" fill="#fff"/>
+  <rect x="0" y="244" width="760" height="52" fill="#f9f9f9"/>
+  <rect x="0" y="296" width="760" height="52" fill="#fff"/>
+
+  <!-- Threat badges -->
+  <!-- Recon -->
+  <rect x="330" y="43"  width="140" height="18" rx="9" fill="#8e44ad"/>
+  <text x="400" y="56" text-anchor="middle" font-size="10" fill="white" font-family="Arial,sans-serif">Reconnaissance</text>
+  <!-- Code exec -->
+  <rect x="330" y="95"  width="140" height="18" rx="9" fill="#c0392b"/>
+  <text x="400" y="108" text-anchor="middle" font-size="10" fill="white" font-family="Arial,sans-serif">Code Execution</text>
+  <!-- Recon + Code exec -->
+  <rect x="330" y="147" width="140" height="18" rx="9" fill="#c0392b"/>
+  <text x="400" y="160" text-anchor="middle" font-size="10" fill="white" font-family="Arial,sans-serif">Recon + Cmd Inject</text>
+  <!-- Priv info disclosure -->
+  <rect x="330" y="199" width="140" height="18" rx="9" fill="#e67e00"/>
+  <text x="400" y="212" text-anchor="middle" font-size="10" fill="white" font-family="Arial,sans-serif">Credential Theft</text>
+  <!-- Availability / botnet -->
+  <rect x="330" y="251" width="140" height="18" rx="9" fill="#c0392b"/>
+  <text x="400" y="264" text-anchor="middle" font-size="10" fill="white" font-family="Arial,sans-serif">Availability / Botnet</text>
+  <!-- Privacy inference -->
+  <rect x="330" y="303" width="140" height="18" rx="9" fill="#16a085"/>
+  <text x="400" y="316" text-anchor="middle" font-size="10" fill="white" font-family="Arial,sans-serif">Privacy Inference</text>
+
+  <!-- Row text -->
+  <!-- Case 1 -->
+  <text x="10"  y="52"  font-size="10" fill="#222" font-family="Arial,sans-serif" font-weight="bold">1. Kernel printk → CVE correlation</text>
+  <text x="10"  y="66"  font-size="9"  fill="#555" font-family="Arial,sans-serif">Attacker reads boot log → kernel version → automated CVE lookup</text>
+  <text x="220" y="58"  font-size="10" fill="#444" font-family="Arial,sans-serif">UART TX (kernel)</text>
+  <text x="490" y="52"  font-size="10" fill="#444" font-family="Arial,sans-serif">§1(b) §1(g)</text>
+  <text x="590" y="52"  font-size="10" fill="#2e7d32" font-family="Arial,sans-serif" font-weight="bold">Not a CVE itself —</text>
+  <text x="590" y="66"  font-size="9"  fill="#555" font-family="Arial,sans-serif">enables CVE-2022-0847, CVE-2021-3493</text>
+
+  <!-- Case 2 -->
+  <text x="10"  y="104" font-size="10" fill="#222" font-family="Arial,sans-serif" font-weight="bold">2. Tesla Model S UART root shell</text>
+  <text x="10"  y="118" font-size="9"  fill="#555" font-family="Arial,sans-serif">Keen Security Lab 2017 — UART shell → CAN bus pivot → steering/brake control</text>
+  <text x="220" y="110" font-size="10" fill="#444" font-family="Arial,sans-serif">UART (root console)</text>
+  <text x="490" y="104" font-size="10" fill="#444" font-family="Arial,sans-serif">§1(b) §1(e)</text>
+  <text x="590" y="104" font-size="10" fill="#c07d00" font-family="Arial,sans-serif" font-weight="bold">Responsible disclosure</text>
+  <text x="590" y="118" font-size="9"  fill="#555" font-family="Arial,sans-serif">No standalone CVE for UART finding</text>
+
+  <!-- Case 3 -->
+  <text x="10"  y="156" font-size="10" fill="#222" font-family="Arial,sans-serif" font-weight="bold">3. Solar inverter Modbus/RS-485 recon</text>
+  <text x="10"  y="170" font-size="9"  fill="#555" font-family="Arial,sans-serif">DEF CON 21 2013 — leaked config registers; Modbus setpoint modification</text>
+  <text x="220" y="162" font-size="10" fill="#444" font-family="Arial,sans-serif">RS-485 / Modbus RTU</text>
+  <text x="490" y="156" font-size="10" fill="#444" font-family="Arial,sans-serif">§1(d) §1(e)</text>
+  <text x="590" y="156" font-size="10" fill="#c07d00" font-family="Arial,sans-serif" font-weight="bold">ICS-CERT advisories</text>
+  <text x="590" y="170" font-size="9"  fill="#555" font-family="Arial,sans-serif">Multiple vendor-specific CVEs</text>
+
+  <!-- Case 4 -->
+  <text x="10"  y="208" font-size="10" fill="#222" font-family="Arial,sans-serif" font-weight="bold">4. Ring Doorbell UART shell</text>
+  <text x="10"  y="222" font-size="9"  fill="#555" font-family="Arial,sans-serif">Bitdefender 2019 — UART root shell → Wi-Fi creds + cloud auth tokens in plaintext</text>
+  <text x="220" y="214" font-size="10" fill="#444" font-family="Arial,sans-serif">UART (root console)</text>
+  <text x="490" y="208" font-size="10" fill="#444" font-family="Arial,sans-serif">§1(b) §1(d)</text>
+  <text x="590" y="208" font-size="10" fill="#c07d00" font-family="Arial,sans-serif" font-weight="bold">Published research</text>
+  <text x="590" y="222" font-size="9"  fill="#555" font-family="Arial,sans-serif">CVE not confirmed for UART specifically</text>
+
+  <!-- Case 5 -->
+  <text x="10"  y="260" font-size="10" fill="#222" font-family="Arial,sans-serif" font-weight="bold">5. Mirai botnet — open console exploitation</text>
+  <text x="10"  y="274" font-size="9"  fill="#555" font-family="Arial,sans-serif">Credential stuffing on open UART/Telnet interfaces → DDoS botnet of IoT devices</text>
+  <text x="220" y="266" font-size="10" fill="#444" font-family="Arial,sans-serif">UART / Telnet bridge</text>
+  <text x="490" y="260" font-size="10" fill="#444" font-family="Arial,sans-serif">§1(b) §1(g)</text>
+  <text x="590" y="260" font-size="10" fill="#2e7d32" font-family="Arial,sans-serif" font-weight="bold">CVE-2016-10401</text>
+  <text x="590" y="274" font-size="9"  fill="#555" font-family="Arial,sans-serif">CVE-2017-17215 (Huawei)</text>
+
+  <!-- Case 6 -->
+  <text x="10"  y="312" font-size="10" fill="#222" font-family="Arial,sans-serif" font-weight="bold">6. Energy pattern → occupancy inference</text>
+  <text x="10"  y="326" font-size="9"  fill="#555" font-family="Arial,sans-serif">Daily energy dip 08:00–17:00 → property unoccupied → targeted burglary window</text>
+  <text x="220" y="318" font-size="10" fill="#444" font-family="Arial,sans-serif">UART TX (telemetry)</text>
+  <text x="490" y="312" font-size="10" fill="#444" font-family="Arial,sans-serif">§1(d) RED-DA 3(3)(e)</text>
+  <text x="590" y="312" font-size="10" fill="#c07d00" font-family="Arial,sans-serif" font-weight="bold">Academic research</text>
+  <text x="590" y="326" font-size="9"  fill="#555" font-family="Arial,sans-serif">Not a CVE — privacy attack vector</text>
+
+  <!-- Bottom border line -->
+  <rect x="0" y="348" width="760" height="1" fill="#ddd"/>
+
+  <!-- Column separator lines -->
+  <line x1="215" y1="0" x2="215" y2="348" stroke="#ddd" stroke-width="1"/>
+  <line x1="325" y1="0" x2="325" y2="348" stroke="#ddd" stroke-width="1"/>
+  <line x1="485" y1="0" x2="485" y2="348" stroke="#ddd" stroke-width="1"/>
+  <line x1="585" y1="0" x2="585" y2="348" stroke="#ddd" stroke-width="1"/>
+
+  <!-- CVE legend -->
+  <rect x="0" y="355" width="760" height="40" fill="#f7f7f7" rx="0"/>
+  <circle cx="20"  y1="378" cx="20"  cy="374" r="6" fill="#2e7d32"/>
+  <text x="32"  y="378" font-size="9" fill="#444" font-family="Arial,sans-serif" font-weight="bold">CVE assigned</text>
+  <circle cx="140" cy="374" r="6" fill="#c07d00"/>
+  <text x="152" y="378" font-size="9" fill="#444" font-family="Arial,sans-serif" font-weight="bold">Documented research / disclosure (no CVE for the specific finding)</text>
+  <text x="460" y="378" font-size="9" fill="#666" font-family="Arial,sans-serif" font-style="italic">CVEs cover config weaknesses &amp; design flaws (CWE-1188, CWE-306, CWE-16). Missing CVEs here = disclosure/process gap, not a risk gap.</text>
+</svg>
+<p style="font-size:.8rem;color:#888;margin-top:.2rem;">Figure 5 — Six real-world cases mapped to threat categories, CRA clauses, and CVE status. All six cases are real and documented; not all have CVE identifiers because CVEs apply to specific software flaws, not design/configuration exposures.</p>
+</div>
+
+<div class="co"><strong>On CVEs and configuration / design vulnerabilities:</strong> A common misconception is that CVEs only cover code bugs. This is incorrect. The CVE Program (MITRE / NVD) explicitly accepts vulnerability reports for configuration weaknesses, insecure defaults, and architectural design flaws — provided they are exploitable, independently fixable, and affect a specific named product. Relevant CWE categories that map directly to this article include: <strong>CWE-1188</strong> (Insecure Default Initialization of Resource — e.g., <code>bootdelay=5</code>), <strong>CWE-306</strong> (Missing Authentication for Critical Function — e.g., open UART root shell), <strong>CWE-284</strong> (Improper Access Control — e.g., unauthenticated JTAG), and <strong>CWE-16</strong> (Configuration). The cases in this article that lack CVEs are missing them for practical reasons: (a) the researcher or vendor chose responsible disclosure without requesting a CVE assignment; (b) the finding was a conceptual research demonstration not tied to a single named product version; or (c) the CVE request was simply never submitted. None of these cases lack CVEs <em>because</em> they are configuration or design issues — that rationale is factually wrong and should not be used to downplay their severity.</div>
+
+<!-- ===== 6 ===== -->
+<h2>6. The U-Boot Bootdelay Case Study — A Real Production Incident</h2>
+
+<div class="svg-wrap">
+<svg viewBox="0 0 720 230" xmlns="http://www.w3.org/2000/svg" aria-label="U-Boot attack chain">
+  <!-- Arrow flow -->
+  <defs><marker id="arr2" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" fill="#c0392b"/></marker></defs>
+
+  <!-- Step boxes -->
+  <rect x="10"  y="60" width="130" height="60" rx="8" fill="#fadbd8" stroke="#c0392b" stroke-width="1.5"/>
+  <text x="75"  y="84" text-anchor="middle" font-size="11" font-weight="bold" fill="#c0392b" font-family="Arial,sans-serif">1. Physical</text>
+  <text x="75"  y="98" text-anchor="middle" font-size="10" fill="#444" font-family="Arial,sans-serif">Access to</text>
+  <text x="75"  y="112" text-anchor="middle" font-size="10" fill="#444" font-family="Arial,sans-serif">wall-mounted device</text>
+
+  <line x1="140" y1="90" x2="168" y2="90" stroke="#c0392b" stroke-width="2" marker-end="url(#arr2)"/>
+
+  <rect x="168" y="60" width="130" height="60" rx="8" fill="#fadbd8" stroke="#c0392b" stroke-width="1.5"/>
+  <text x="233" y="84" text-anchor="middle" font-size="11" font-weight="bold" fill="#c0392b" font-family="Arial,sans-serif">2. USB-Serial</text>
+  <text x="233" y="98" text-anchor="middle" font-size="10" fill="#444" font-family="Arial,sans-serif">$4 cable to</text>
+  <text x="233" y="112" text-anchor="middle" font-size="10" fill="#444" font-family="Arial,sans-serif">UART header / pads</text>
+
+  <line x1="298" y1="90" x2="326" y2="90" stroke="#c0392b" stroke-width="2" marker-end="url(#arr2)"/>
+
+  <rect x="326" y="60" width="130" height="60" rx="8" fill="#fadbd8" stroke="#c0392b" stroke-width="1.5"/>
+  <text x="391" y="84" text-anchor="middle" font-size="11" font-weight="bold" fill="#c0392b" font-family="Arial,sans-serif">3. Reboot</text>
+  <text x="391" y="98" text-anchor="middle" font-size="10" fill="#444" font-family="Arial,sans-serif">Press any key</text>
+  <text x="391" y="112" text-anchor="middle" font-size="10" fill="#444" font-family="Arial,sans-serif">within 5 seconds</text>
+
+  <line x1="456" y1="90" x2="484" y2="90" stroke="#c0392b" stroke-width="2" marker-end="url(#arr2)"/>
+
+  <rect x="484" y="40" width="230" height="100" rx="8" fill="#c0392b"/>
+  <text x="599" y="64"  text-anchor="middle" font-size="12" font-weight="bold" fill="white" font-family="Arial,sans-serif">U-Boot Interactive Shell</text>
+  <text x="599" y="82"  text-anchor="middle" font-size="10" fill="#ffaaaa" font-family="Arial,sans-serif">✖ Load arbitrary firmware</text>
+  <text x="599" y="97"  text-anchor="middle" font-size="10" fill="#ffaaaa" font-family="Arial,sans-serif">✖ Dump NAND/eMMC flash</text>
+  <text x="599" y="112" text-anchor="middle" font-size="10" fill="#ffaaaa" font-family="Arial,sans-serif">✖ Extract keys &amp; credentials</text>
+  <text x="599" y="127" text-anchor="middle" font-size="10" fill="#ffaaaa" font-family="Arial,sans-serif">✖ Bypass secure boot</text>
+
+  <!-- Fix box -->
+  <rect x="10" y="160" width="460" height="58" rx="8" fill="#d5f5e3" stroke="#2e7d32" stroke-width="2"/>
+  <text x="235" y="182" text-anchor="middle" font-size="12" font-weight="bold" fill="#2e7d32" font-family="Arial,sans-serif">Fix: Set CONFIG_BOOTDELAY = -2 (not 0)</text>
+  <text x="235" y="200" text-anchor="middle" font-size="10" fill="#444" font-family="Arial,sans-serif">bootdelay=0 still responds to fast keystrokes in some U-Boot versions.</text>
+  <text x="235" y="214" text-anchor="middle" font-size="10" fill="#444" font-family="Arial,sans-serif">bootdelay=-2 disables both the countdown AND the interrupt mechanism completely.</text>
+
+  <!-- CRA violations -->
+  <rect x="484" y="155" width="230" height="58" rx="8" fill="#fff3cd" stroke="#f39c12" stroke-width="1.5"/>
+  <text x="599" y="174" text-anchor="middle" font-size="10" font-weight="bold" fill="#c07d00" font-family="Arial,sans-serif">CRA Violations</text>
+  <text x="599" y="190" text-anchor="middle" font-size="10" fill="#444" font-family="Arial,sans-serif">§1(b) — Known exploitable vulnerability</text>
+  <text x="599" y="204" text-anchor="middle" font-size="10" fill="#444" font-family="Arial,sans-serif">§1(e) — Integrity not protected</text>
+</svg>
+<p style="font-size:.8rem;color:#888;margin-top:.2rem;">Figure 6 — A real production gateway attack chain. Total attacker cost: one $4 USB-to-serial cable, physical access, and 5 seconds.</p>
+</div>
+
+<div class="cr"><strong>This case proves the security team's position with no ambiguity.</strong> An open U-Boot console is not "convenient for field diagnosis." It is a physical code-execution vulnerability with no authentication, no logging, and no access control. It definitively fails EN 18031-1 ACM-5 and CRA §1(b). There is no documented risk acceptance that makes this acceptable on a shipped product.</div>
+
+<!-- ===== 7 ===== -->
+<h2>7. Fifteen Engineering Pushbacks — With Authoritative Responses</h2>
+
+<h3>Pushback 1: "We need logs to know things are going right"</h3>
+<p><span class="vp">Operationally valid.</span> CRA §1(i) actually creates a monitoring obligation. The debate is not about whether to log — it is about where logs go and who can access them. Compliant alternatives: remote authenticated syslog to a TLS-secured cloud endpoint (your cloud management platform likely already has this infrastructure), persistent circular log in <code>/var/log/</code> pulled via authenticated SSH or HTTPS API, or structured application logs pushed to a secure backend on reconnect. The serial port is a development-time convenience that became a production habit.</p>
+
+<h3>Pushback 2: "Serial log messages don't contain PII or sensitive info"</h3>
+<p><span class="vf">Factually incomplete.</span> CRA §1(g) attack surface minimization is not limited to PII. The question under CRA is not "does it contain PII?" but "does it increase exploitability?" Even sanitised logs typically reveal: kernel version (enabling CVE lookup), software versions, service names, network endpoints, authentication events, and filesystem topology. Additionally, energy behavioral patterns emitted on serial are personal data under GDPR Art.4(1) regardless of whether they contain a name. See Case 6 above.</p>
+
+<h3>Pushback 3: "If we disable serial, we need a different firmware image for diagnosis"</h3>
+<p><span class="vc">Valid concern, wrong conclusion.</span> Maintaining a separate debug firmware image creates more risk: separate signing, potential for the debug image to end up in production, and no guarantee it reflects the actual production state. The correct architecture is one signed production binary with security-controlled diagnostic modes — same image, different authenticated configuration. The debug capability exists in the binary; production configuration simply does not activate it without authentication. See Section 10.</p>
+
+<h3>Pushback 4: "What about a configuration parameter to enable/disable the serial port?"</h3>
+<p><span class="vc">Good direction — with strict conditions.</span> A configuration parameter is not inherently a security control. If a filesystem-accessible file enables the port, an attacker with any system access can flip it. A compliant implementation requires: disabled state is factory default, enabling requires a signed token or authenticated API call, the config partition is write-protected, enabling events are logged to a remote audit log, and the port auto-disables after a timeout or reboot.</p>
+
+<h3>Pushback 5: "What if serial communication is encrypted with per-device unique keys, decryptable only by the RMA server?"</h3>
+<p><span class="vc">Strong for the application log stream. Insufficient by itself.</span> Encryption addresses CRA §1(d). What it does not address: (a) U-Boot is pre-kernel — encryption is not running during the bootloader window, which is where this exact class of bootloader attack occurred on a production device. (b) Duplex serial with encryption still allows MitM command injection if the channel is bidirectional. (c) Server-side key compromise radius covers the entire fleet. Verdict: implement encrypted per-device log streams for the application layer, pair it with simplex UART (TX only), and harden the bootloader separately. These are complementary, not alternative, controls.</p>
+
+<h3>Pushback 6: "Energy telemetry is not sensitive — an attacker can't use energy data"</h3>
+<p><span class="vf">Factually incorrect.</span> See Case 6. Occupancy inference from daily energy patterns is a documented behavioral profiling attack. Under GDPR Art.4(1), behavioral patterns from which a person's occupancy can be inferred at a named address are personal data. RED-DA Art.3(3)(e) mandates protection of such data. The correct response is not to stop collecting the telemetry — it is to route it through an authenticated, encrypted cloud channel instead of broadcasting it on an unauthenticated physical interface.</p>
+
+<h3>Pushback 7: "What if the serial interface is simplex — output only, the device never reads from it?"</h3>
+<p><span class="vc">Meaningful risk reduction. Acceptable as part of layered controls. Insufficient alone.</span> Simplex eliminates command injection and configuration manipulation at the kernel/application level — a genuine improvement. What it does not eliminate: information disclosure (Cases 1, 3, 6 still apply), and the U-Boot attack window (which occurs before Linux loads, where your simplex setting has no effect). Simplex UART TX with kernel log suppressed and application log filtered is a defensible Tier 3 configuration with documented residual risk.</p>
+
+<h3>Pushback 8: "The serial console only shows Linux kernel boot messages — that's the kernel printing them, not our application code"</h3>
+<p><span class="vc">Factually correct observation — but the wrong conclusion follows from it.</span> The developer is right on the technical fact: <code>printk</code> is a <strong>Linux kernel subsystem</strong>, not an application-layer logging call. It is the kernel itself that prints boot progress, driver initialization, hardware probing, and runtime events directly to the serial console — none of this is written by the product's application team. It is completely separate from any <code>printf</code>, <code>syslog</code>, or custom logging framework in your business application.</p>
+<p>However, this distinction does not reduce the security risk — it actually makes the exposure harder to miss in a code review, because the kernel emits these messages regardless of what the application does. By default, every Linux boot sequence announces itself over serial with messages like:</p>
+<ul>
+  <li><code>Linux version 5.4.3 (gcc 8.3.0, Buildroot 2019.02)</code> — exact kernel and toolchain version → automated CVE lookup in seconds</li>
+  <li><code>EXT4-fs (mmcblk0p3): mounted filesystem</code> — partition layout and filesystem type</li>
+  <li><code>Starting systemd version 249.11</code> — init system version → known vulnerability surface</li>
+  <li><code>Started OpenSSH server daemon</code> — confirms which network services are running</li>
+</ul>
+<p>None of that is your application's log. All of it is the kernel's own self-description, and all of it is reconnaissance gold for an attacker with a $4 USB-serial cable. The product team is responsible for how the kernel is configured — this is a Board Support Package (BSP) setting, not application code. The fix is a single line in the kernel bootargs, not a code change: <code>quiet loglevel=0 console=null</code>. The kernel continues to maintain its full internal log ring buffer; all messages remain accessible via <code>dmesg</code> and <code>journalctl</code> over an authenticated session. Zero engineering effort. Zero loss of diagnostic capability.</p>
+
+<h3>Pushback 9: "Our device is physically enclosed — the serial port is not accessible"</h3>
+<p><span class="vf">Physical enclosure is not a security control under CRA.</span> CRA Article 13 risk assessment must consider "reasonably foreseeable use" over the product's lifetime. Solar gateways are installed on exterior walls, in utility rooms, and in publicly accessible buildings. A motivated attacker can open a plastic enclosure in under 60 seconds. If UART headers or test pads are accessible after opening, the interface is in scope. Acceptable physical controls include removed/potted test pads, conformal coating over headers, and a register-level hardware disable of the UART peripheral.</p>
+
+<h3>Pushback 10: "We already have secure boot — serial can't be used to load bad firmware"</h3>
+<p><span class="vf">Secure boot and an open serial console are orthogonal controls.</span> Secure boot validates boot stage integrity before execution. It does not prevent: U-Boot environment variable manipulation that redirects the boot path without replacing the image; memory extraction via U-Boot <code>md</code> commands that dumps keys, certificates, and secrets from RAM; or serial console root shell access that modifies the running system without touching the boot path. Secure boot is critical. It is not a substitute for bootloader console hardening.</p>
+
+<h3>Pushback 11: "The serial port is only used during factory testing — it's left on by accident"</h3>
+<p><span class="vf">CRA applies to shipped products, not intended configurations.</span> CRA §1(b) applies to the product as delivered. If the serial console is active in the firmware image that ships, the fact that it was "only intended for factory use" is legally irrelevant. This is an argument for integrating security configuration into the CI/CD build pipeline — a build-time gate that fails the production image signing if factory debug settings are present — not for leaving the port open.</p>
+
+<h3>Pushback 12: "There's no external connector — the UART is on an internal header with no cable"</h3>
+<p><span class="vc">Partial risk reduction. Not sufficient under EN 18031-1.</span> EN 18031-1 ACM-5 applies to any interface "accessible in a production device." Accessibility is not limited to externally connected interfaces. A UART with a populated PCB header or exposed test pads is accessible with a Dupont cable or test clips after the enclosure is opened. Missing connector ≠ disabled interface. The assessment must address whether the interface can be reached after enclosure opening, which for a fixed-installation energy gateway is a realistic scenario.</p>
+
+<h3>Pushback 13: "We'll document it as a known risk and accept it"</h3>
+<p><span class="vf">Risk acceptance is a valid process step — not a compliance workaround.</span> CRA §1(b) requires that products are delivered "without any known exploitable vulnerabilities." Risk acceptance cannot override this. It applies to residual risks after controls are applied, to risks that cannot be reasonably mitigated, or to SHOULD-level deviations. It is not applicable to SHALL-level requirements or the §1(b) baseline. Attempting to CE-mark a product with an unmitigated known vulnerability by citing risk acceptance documentation is a compliance failure.</p>
+
+<h3>Pushback 14: "Our product is B2B — RED-DA only applies to consumer products"</h3>
+<p><span class="vf">Incorrect interpretation of scope.</span> RED-DA Commission Delegated Regulation (EU) 2022/30 applies to specified categories of radio equipment based on technical characteristics, not customer segment. If your gateway connects to the internet and falls within the specified product categories, RED-DA applies regardless of whether it is sold to homeowners, installers, or commercial operators. CRA scope is similarly based on "products with digital elements" — which includes commercial and industrial IoT products.</p>
+
+<h3>Pushback 15: "We use RS-485 / Modbus RTU for communicating with solar panels, meters, and battery systems — you can't disable that serial interface"</h3>
+<p><span class="vc">Legitimate and important distinction. RS-485/Modbus RTU is a field bus, not a debug console — they require different security treatments.</span> This pushback correctly identifies that "disable all UART" is an oversimplification. A renewable energy gateway may use:</p>
+<ul>
+  <li><strong>UART0</strong> — Debug console (this is what should be hardened/disabled)</li>
+  <li><strong>UART1 or RS-485 controller</strong> — Modbus RTU to microinverters, energy meters, or battery management systems (this must remain functional)</li>
+</ul>
+<p>These are physically different interfaces and software channels. The security treatment for Modbus RTU is distinct: Modbus RTU (IEC 61158) has no built-in authentication. Mitigations include: physical isolation of the RS-485 bus, Modbus firewall/gateway (MOXA MB3000 class), data integrity at the application layer (CRC validation is native to Modbus), and referencing IEC 62351-5 for authenticated Modbus extensions. The debug console and the Modbus field bus are separate concerns — do not let conflation of the two become a reason to leave the debug console open.</p>
+
+<!-- ===== 8 ===== -->
+<h2>8. The FST Troubleshooting Scenario — The Hardest Pushback</h2>
+
+<div class="co"><strong>Scenario:</strong> A device is deployed at a customer's premises. It stops functioning. The customer calls support. Level 1 escalates to Level 2. Level 2 escalates to device engineering. Engineering says: "I need serial access to understand what's happening — I cannot diagnose a production device without loading a debug-enabled image, and that's a different firmware, which may not reflect the production state."</div>
+
+<p>This is the most operationally legitimate concern in the list. It deserves a real engineering answer, not a dismissal. The key insight is that this argument is used to justify open serial on <em>all</em> field devices when in reality it only applies to a specific failure scenario — and for the worst cases, serial doesn't help anyway.</p>
+
+<div class="svg-wrap">
+<svg viewBox="0 0 760 240" xmlns="http://www.w3.org/2000/svg" aria-label="FST troubleshooting decision tree">
+  <defs><marker id="arr3" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#555"/></marker></defs>
+
+  <!-- Device state box -->
+  <rect x="280" y="10" width="200" height="44" rx="8" fill="#2c3e50"/>
+  <text x="380" y="29" text-anchor="middle" font-size="12" font-weight="bold" fill="white" font-family="Arial,sans-serif">Device Failure in Field</text>
+  <text x="380" y="47" text-anchor="middle" font-size="10" fill="#aaa" font-family="Arial,sans-serif">FST at customer premises</text>
+
+  <!-- Branch lines -->
+  <line x1="280" y1="32" x2="130" y2="90" stroke="#555" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arr3)"/>
+  <line x1="380" y1="54" x2="380" y2="90" stroke="#555" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arr3)"/>
+  <line x1="480" y1="32" x2="630" y2="90" stroke="#555" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arr3)"/>
+
+  <!-- State 1: Degraded but networked -->
+  <rect x="20" y="90" width="210" height="52" rx="8" fill="#d5f5e3" stroke="#2e7d32" stroke-width="1.5"/>
+  <text x="125" y="110" text-anchor="middle" font-size="11" font-weight="bold" fill="#2e7d32" font-family="Arial,sans-serif">Degraded — has network</text>
+  <text x="125" y="127" text-anchor="middle" font-size="10" fill="#444" font-family="Arial,sans-serif">Cloud log pull · Management API</text>
+  <text x="125" y="142" text-anchor="middle" font-size="10" fill="#2e7d32" font-family="Arial,sans-serif">✔ No serial needed</text>
+
+  <!-- State 2: Boot loop / partial boot -->
+  <rect x="275" y="90" width="210" height="52" rx="8" fill="#fef9e7" stroke="#f39c12" stroke-width="1.5"/>
+  <text x="380" y="110" text-anchor="middle" font-size="11" font-weight="bold" fill="#c07d00" font-family="Arial,sans-serif">Boot loop / crash loop</text>
+  <text x="380" y="127" text-anchor="middle" font-size="10" fill="#444" font-family="Arial,sans-serif">pstore crash logs on eMMC</text>
+  <text x="380" y="142" text-anchor="middle" font-size="10" fill="#c07d00" font-family="Arial,sans-serif">⚠ Auth serial OR pstore</text>
+
+  <!-- State 3: Complete no-boot -->
+  <rect x="530" y="90" width="210" height="52" rx="8" fill="#fadbd8" stroke="#c0392b" stroke-width="1.5"/>
+  <text x="635" y="110" text-anchor="middle" font-size="11" font-weight="bold" fill="#c0392b" font-family="Arial,sans-serif">Complete no-boot</text>
+  <text x="635" y="127" text-anchor="middle" font-size="10" fill="#444" font-family="Arial,sans-serif">FST cannot fix in field</text>
+  <text x="635" y="142" text-anchor="middle" font-size="10" fill="#c0392b" font-family="Arial,sans-serif">✖ RMA — serial at bench only</text>
+
+  <!-- Bottom summary -->
+  <rect x="10" y="168" width="740" height="62" rx="8" fill="#f4f6f9" stroke="#2c3e50" stroke-width="1.5"/>
+  <text x="380" y="187" text-anchor="middle" font-size="11" font-weight="bold" fill="#2c3e50" font-family="Arial,sans-serif">The FST Insight: Serial only helps in the middle case — and for that, authenticated serial is the right answer</text>
+  <text x="380" y="204" text-anchor="middle" font-size="10" fill="#444" font-family="Arial,sans-serif">For complete no-boot: the device needs RMA regardless — open serial in field doesn't help</text>
+  <text x="380" y="220" text-anchor="middle" font-size="10" fill="#444" font-family="Arial,sans-serif">For degraded/networked: cloud log pull and remote OTA debug activation solve it without physical serial</text>
+</svg>
+<p style="font-size:.8rem;color:#888;margin-top:.2rem;">Figure 7 — FST troubleshooting decision tree. Open serial on all field devices is not justified by the edge case that only applies to the middle failure class.</p>
+</div>
+
+<p><strong>The recommended architecture for FST support:</strong></p>
+<ul>
+  <li><strong>pstore</strong> — persistent kernel crash logs written to a dedicated eMMC partition, surviving reboots. FST extracts via authenticated HTTPS API after any partial boot.</li>
+  <li><strong>Cloud-triggered verbose logging</strong> — if the device has any network connectivity, the cloud support portal can push a signed configuration change that enables debug-level logging routed to the secure remote syslog endpoint.</li>
+  <li><strong>Authenticated local diagnostic API</strong> — FST connects on the local LAN and uses a time-limited token (generated by the backend after engineer authentication) to pull diagnostic bundles via HTTPS.</li>
+  <li><strong>Authenticated serial console</strong> — for genuine early-boot failures where network is unavailable, the authenticated serial console (Section 10) allows engineering access without leaving the port permanently open.</li>
+  <li><strong>RMA for complete no-boot</strong> — this is correct and cannot be avoided. A device that cannot boot cannot be fixed in the field regardless of serial availability.</li>
+</ul>
+
+<!-- ===== 9 ===== -->
+<h2>9. NXP i.MX 93 Crypto-JTAG and EdgeLock DAT</h2>
+
+<div class="rma-box">
+<h3>⚠️ RMA USE ONLY — Not Applicable to Field-Deployed Devices</h3>
+<p>The capability described in this section applies exclusively to devices that have been physically returned to an authorised service facility. It is not a mechanism for enabling JTAG access on devices deployed at customer premises. It requires: physical JTAG connection (not over serial or network), an OEM-held private key that never leaves the HSM, and a chip lifecycle fuse state that is irreversible once set. Field devices in OEM_CLOSED state cannot be JTAG-accessed without the full DAT protocol — this is by design and is the correct production security posture.</p>
+</div>
+
+<h3>9.1 EdgeLock Secure Enclave (ELE) Overview</h3>
+<p>The NXP i.MX 93 integrates the <strong>EdgeLock Secure Enclave</strong> — an independent Arm Cortex-M33 security processor that operates separately from the application cores. It manages: secure boot and image authentication, Debug Authentication (JTAG access via PKI challenge-response), cryptographic key lifecycle, chip lifecycle fuse management, and an event log of all security-relevant actions. The ELE cannot be bypassed through software running on the application cores.</p>
+
+<h3>9.2 Chip Lifecycle Fuse States</h3>
+
+<div class="svg-wrap">
+<svg viewBox="0 0 760 110" xmlns="http://www.w3.org/2000/svg" aria-label="i.MX 93 chip lifecycle">
+  <defs><marker id="arr4" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#555"/></marker></defs>
+  <!-- States -->
+  <rect x="10"  y="30" width="120" height="44" rx="8" fill="#2ecc71"/>
+  <text x="70"  y="52" text-anchor="middle" font-size="11" font-weight="bold" fill="white" font-family="Arial,sans-serif">FA</text>
+  <text x="70"  y="67" text-anchor="middle" font-size="9"  fill="white" font-family="Arial,sans-serif">NXP factory default</text>
+
+  <line x1="130" y1="52" x2="155" y2="52" stroke="#555" stroke-width="2" marker-end="url(#arr4)"/>
+
+  <rect x="155" y="30" width="120" height="44" rx="8" fill="#3498db"/>
+  <text x="215" y="52" text-anchor="middle" font-size="11" font-weight="bold" fill="white" font-family="Arial,sans-serif">OEM_OPEN</text>
+  <text x="215" y="67" text-anchor="middle" font-size="9"  fill="white" font-family="Arial,sans-serif">Development / JTAG open</text>
+
+  <line x1="275" y1="52" x2="300" y2="52" stroke="#555" stroke-width="2" marker-end="url(#arr4)"/>
+
+  <rect x="300" y="20" width="140" height="64" rx="8" fill="#e74c3c"/>
+  <text x="370" y="44" text-anchor="middle" font-size="12" font-weight="bold" fill="white" font-family="Arial,sans-serif">OEM_CLOSED ★</text>
+  <text x="370" y="60" text-anchor="middle" font-size="10" fill="white" font-family="Arial,sans-serif">Production field devices</text>
+  <text x="370" y="75" text-anchor="middle" font-size="9"  fill="#ffaaaa" font-family="Arial,sans-serif">JTAG requires DAT protocol</text>
+
+  <line x1="440" y1="52" x2="465" y2="52" stroke="#555" stroke-width="2" marker-end="url(#arr4)"/>
+
+  <rect x="465" y="30" width="140" height="44" rx="8" fill="#e67e00"/>
+  <text x="535" y="49" text-anchor="middle" font-size="11" font-weight="bold" fill="white" font-family="Arial,sans-serif">OEM_FIELD_RETURN</text>
+  <text x="535" y="66" text-anchor="middle" font-size="9"  fill="white" font-family="Arial,sans-serif">RMA — DAT with field-return scope</text>
+
+  <line x1="605" y1="52" x2="630" y2="52" stroke="#555" stroke-width="2" marker-end="url(#arr4)"/>
+
+  <rect x="630" y="30" width="120" height="44" rx="8" fill="#7f8c8d"/>
+  <text x="690" y="52" text-anchor="middle" font-size="11" font-weight="bold" fill="white" font-family="Arial,sans-serif">OEM_LOCKED</text>
+  <text x="690" y="67" text-anchor="middle" font-size="9"  fill="white" font-family="Arial,sans-serif">JTAG permanently off</text>
+
+  <!-- one-way arrows note -->
+  <text x="380" y="102" text-anchor="middle" font-size="9" fill="#888" font-family="Arial,sans-serif">★ All production devices must be in OEM_CLOSED state. All lifecycle transitions are irreversible (one-way fuse writes).</text>
+</svg>
+<p style="font-size:.8rem;color:#888;margin-top:.2rem;">Figure 8 — NXP i.MX 93 chip lifecycle fuse states. Fuse writes are one-way and irreversible. OEM_CLOSED must be burned at manufacturing end-of-line.</p>
+</div>
+
+<h3>9.3 Debug Authentication Protocol (DAT) — How It Works</h3>
+<p>When a JTAG probe connects to an OEM_CLOSED device, the ELE executes an asymmetric challenge-response:</p>
+<ol>
+  <li>JTAG probe connects. ELE generates a fresh nonce (challenge).</li>
+  <li>The probe host must present a <strong>Debug Credential (DC)</strong> — an X.509-like certificate signed by the OEM Root Key — containing: device UUID scope, permitted debug access (which cores, which peripherals), and optional expiry timestamp.</li>
+  <li>The probe host signs the challenge nonce with the DC private key.</li>
+  <li>ELE verifies the signature chain: OEM Root Key → Debug Credential → challenge response. If valid, debug access is granted within the scope defined in the DC.</li>
+  <li>ELE event log records the debug session (timestamp, DC hash, cores unlocked).</li>
+  <li>When the probe disconnects, debug access is revoked. Session is logged as closed.</li>
+</ol>
+
+<div class="cb"><strong>Key security properties satisfied:</strong> Authentication (OEM private key never leaves HSM), Authorization (scope is encoded in the DC), Audit (ELE event log), Non-repudiation (DC can be device-specific by UUID), Time limitation (DC can carry an expiry timestamp), Physical requirement (physical JTAG connection required — cannot be triggered remotely), Field protection (OEM_CLOSED state makes this impossible to perform in the field without the OEM credential).</div>
+
+<!-- ===== 10 ===== -->
+<h2>10. Implementing an Authenticated Serial Console — High-Level Architecture</h2>
+
+<p>The architectural conclusion from all preceding sections is clear: an open, unauthenticated serial console is not compliant. But the operational need for serial-based diagnostics in specific scenarios is legitimate. This section provides high-level design approaches — the goal is to give architects the concept; implementation detail will vary by platform and security maturity level.</p>
+
+<h3>10.1 Embedded Linux — Three Architectural Approaches</h3>
+
+<div class="approach-grid">
+<div class="hld-box">
+<h4>Approach A — HMAC Challenge-Response Daemon (Recommended)</h4>
+<p><strong>Concept:</strong> A minimal daemon starts early in the boot sequence, before the standard login shell. It emits a random 128-bit nonce over UART TX, then waits a fixed time window for a response. The correct response is HMAC-SHA256(device-unique-secret, nonce). If valid, it transitions the UART to an authenticated, time-limited login session. If no valid response arrives, UART RX is redirected to <code>/dev/null</code>.</p>
+<p><strong>Key design properties:</strong></p>
+<ul>
+  <li>Device-unique secret stored in secure storage (TPM NVRAM, OP-TEE secure world, or at minimum a dm-verity-protected read-only partition)</li>
+  <li>Backend engineer tool queries an internal secrets vault (HSM) to generate the response — the secret never leaves the vault</li>
+  <li>Session timeout enforced (e.g., 60 minutes or N reboots)</li>
+  <li>All authentication events logged to remote syslog</li>
+  <li>Failed attempts increment a lockout counter</li>
+</ul>
+<p><strong>Availability:</strong> Operational from early userspace — captures post-kernel, pre-application failures.</p>
+</div>
+
+<div class="hld-box">
+<h4>Approach B — SSH Over Serial</h4>
+<p><strong>Concept:</strong> A serial-to-socket bridge (e.g., <code>ser2net</code>) exposes the serial port as a local TCP socket. A lightweight SSH server (<code>dropbear</code>) listens on that socket. The FST or engineer connects via SSH over a USB-to-serial adapter, using device-specific Ed25519 keys provisioned at manufacturing.</p>
+<p><strong>Key design properties:</strong></p>
+<ul>
+  <li>Leverages mature, battle-tested SSH authentication infrastructure</li>
+  <li>Key-based auth — no passwords to brute-force</li>
+  <li>Standard SSH audit logging</li>
+  <li>Can use certificate authority for fleet-wide key management</li>
+</ul>
+<p><strong>Limitation:</strong> Not available during early boot (kernel must be running and SSH server started). Suitable for application-layer diagnosis, not bootloader or kernel crash diagnosis.</p>
+</div>
+
+<div class="hld-box">
+<h4>Approach C — Time-Limited OTP Token</h4>
+<p><strong>Concept:</strong> The serial console requires a TOTP (Time-based One-Time Password) derived from the device serial number. The backend generates the OTP after the engineer authenticates to the support portal. The device validates it against the same TOTP algorithm using the device seed stored in secure storage. Valid window is 30 seconds.</p>
+<p><strong>Key design properties:</strong></p>
+<ul>
+  <li>Two-factor: device TOTP seed + engineer's backend authentication</li>
+  <li>Offline-capable: no network required at the device during authentication</li>
+  <li>Automatically expires — no persistent session risk</li>
+</ul>
+<p><strong>Consideration:</strong> Requires accurate clock on device (NTP or RTC). Time drift can cause false failures.</p>
+</div>
+
+<div class="hld-box">
+<h4>Approach D — Signed Debug Activation Token (OTA)</h4>
+<p><strong>Concept:</strong> The production image contains the debug capability but it is off by default. A signed JSON Web Token (JWT) or CBOR-encoded token, issued by the product security team's backend and signed with the OEM private key, can be passed to the device via the authenticated HTTPS management API. The device verifies the signature, checks the token scope and expiry, and activates the debug console for the authorized window.</p>
+<p><strong>Key design properties:</strong></p>
+<ul>
+  <li>Requires no physical serial access to authorize — works remotely</li>
+  <li>Token is device-scoped (device serial number embedded in JWT claims)</li>
+  <li>Token carries expiry and permission scope (log-only vs interactive shell)</li>
+  <li>Requires network connectivity to deliver the token</li>
+</ul>
+<p><strong>Best suited for:</strong> Remotely enabling verbose logging for degraded-but-networked devices — the most common FST scenario.</p>
+</div>
+</div>
+
+<h3>10.2 MCUboot + Zephyr RTOS — Two Approaches</h3>
+
+<div class="approach-grid">
+<div class="hld-box">
+<h4>MCUboot — GPIO-Gated Serial DFU</h4>
+<p><strong>Concept:</strong> MCUboot's serial recovery DFU interface is disabled by default (<code>CONFIG_MCUBOOT_SERIAL=n</code>). For factory use, it can be activated only when a specific GPIO pin is held low during power-on — a pin that is physically inaccessible on the sealed production unit (e.g., under potted conformal coating on the manufacturing test jig connector). MCUboot always enforces image signature verification, even in serial recovery mode — only OEM-signed images are accepted.</p>
+<p><strong>Key design properties:</strong></p>
+<ul>
+  <li>No serial recovery in normal operation</li>
+  <li>Factory: GPIO pin accessible on test jig, not in customer housing</li>
+  <li>Image authentication enforced regardless of recovery path</li>
+  <li>Time-limited DFU window configured via <code>CONFIG_BOOT_SERIAL_WAIT_FOR_DFU</code></li>
+</ul>
+</div>
+
+<div class="hld-box">
+<h4>Zephyr Shell — Authenticated Module with Default-Off</h4>
+<p><strong>Concept:</strong> The Zephyr Shell backend for UART (<code>CONFIG_SHELL_BACKEND_SERIAL</code>) is disabled in production. Logging is retained via the UART log backend in TX-only mode at WARNING level. For authenticated field access, a custom shell module can be built into the image that starts the shell in a locked state — only the <code>auth</code> command is available. After successful HMAC validation, the full command set unlocks for a timed session. Zephyr's logging framework continues to emit structured logs over UART TX independently of shell state.</p>
+<p><strong>Key design properties:</strong></p>
+<ul>
+  <li>Logging and interactive shell are independent subsystems</li>
+  <li>Production: logging at WARNING level, shell locked</li>
+  <li>Authorized session: shell unlocked for 60 minutes, auto-reverts</li>
+  <li>MCUboot image signature always enforced</li>
+</ul>
+</div>
+</div>
+
+<div class="svg-wrap">
+<svg viewBox="0 0 760 190" xmlns="http://www.w3.org/2000/svg" aria-label="Authenticated serial console architecture">
+  <defs><marker id="arr5" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#2c3e50"/></marker></defs>
+
+  <!-- Device box -->
+  <rect x="230" y="20" width="300" height="150" rx="10" fill="#eaf0fb" stroke="#2980b9" stroke-width="2"/>
+  <text x="380" y="42" text-anchor="middle" font-size="12" font-weight="bold" fill="#1a5276" font-family="Arial,sans-serif">Production Device</text>
+
+  <!-- UART TX path -->
+  <rect x="250" y="52" width="260" height="30" rx="6" fill="#2ecc71"/>
+  <text x="380" y="72" text-anchor="middle" font-size="11" fill="white" font-family="Arial,sans-serif">UART TX — Filtered Log Output (ENABLED)</text>
+
+  <!-- UART RX / Auth gate -->
+  <rect x="250" y="92" width="260" height="30" rx="6" fill="#e74c3c"/>
+  <text x="380" y="112" text-anchor="middle" font-size="11" fill="white" font-family="Arial,sans-serif">UART RX — Auth Gate (DEFAULT: LOCKED)</text>
+
+  <!-- Authenticated shell -->
+  <rect x="250" y="132" width="260" height="28" rx="6" fill="#3498db" opacity=".6"/>
+  <text x="380" y="150" text-anchor="middle" font-size="10" fill="white" font-family="Arial,sans-serif">Authenticated Shell (ENABLED only after HMAC OK)</text>
+
+  <!-- Logs arrow out left -->
+  <line x1="230" y1="67" x2="130" y2="67" stroke="#2ecc71" stroke-width="2" marker-end="url(#arr5)"/>
+  <rect x="10" y="52" width="120" height="30" rx="6" fill="#d5f5e3" stroke="#2e7d32" stroke-width="1.5"/>
+  <text x="70"  y="67" text-anchor="middle" font-size="10" fill="#1a5c38" font-family="Arial,sans-serif">Monitor / Cloud Log</text>
+  <text x="70"  y="80" text-anchor="middle" font-size="9"  fill="#1a5c38" font-family="Arial,sans-serif">(passive, no auth needed)</text>
+
+  <!-- HMAC challenge flow -->
+  <line x1="530" y1="67" x2="610" y2="67" stroke="#2ecc71" stroke-width="2" marker-end="url(#arr5)"/>
+  <text x="610" y="62"  font-size="9" fill="#2e7d32" font-family="Arial,sans-serif">1. Device emits</text>
+  <text x="610" y="75"  font-size="9" fill="#2e7d32" font-family="Arial,sans-serif">random nonce</text>
+
+  <line x1="530" y1="107" x2="610" y2="107" stroke="#e74c3c" stroke-width="2"/>
+  <text x="612" y="102" font-size="9" fill="#c0392b" font-family="Arial,sans-serif">2. Engineer computes</text>
+  <text x="612" y="115" font-size="9" fill="#c0392b" font-family="Arial,sans-serif">HMAC via HSM tool</text>
+
+  <line x1="610" y1="120" x2="610" y2="135" stroke="#3498db" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arr5)"/>
+  <line x1="610" y1="135" x2="530" y2="143" stroke="#3498db" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arr5)"/>
+  <text x="612" y="135" font-size="9" fill="#1a6bb5" font-family="Arial,sans-serif">3. Response sent →</text>
+  <text x="612" y="148" font-size="9" fill="#1a6bb5" font-family="Arial,sans-serif">shell unlocks (60 min)</text>
+</svg>
+<p style="font-size:.8rem;color:#888;margin-top:.2rem;">Figure 9 — Authenticated serial console: UART TX log output is always available; UART RX is locked until HMAC challenge-response succeeds. The engineer never sees the device secret — only the response computed by the backend HSM tool.</p>
+</div>
+
+<!-- ===== 11 ===== -->
+<h2>11. Adequate Security: What Is Minimally Required and the SSDL Phased Roadmap</h2>
+
+<h3>11.1 What "Adequate Security" Means in CRA</h3>
+<p>CRA Article 6 and Recital 34 ground the entire regulation in proportionality: manufacturers must implement "an appropriate level of cybersecurity based on the risks." This is not absolute security (which is impossible) and not checkbox compliance (which provides no real protection). It is security that is proportionate to:</p>
+<ul>
+  <li><strong>Threat likelihood:</strong> Is physical access to this device realistically achievable?</li>
+  <li><strong>Impact severity:</strong> If compromised, what is the blast radius — one device, the fleet, or critical grid infrastructure?</li>
+  <li><strong>Asset value:</strong> Does this device control physical energy flows, process financial data, store personal data?</li>
+  <li><strong>Deployment lifetime:</strong> A solar installation has a 15–25 year lifecycle. Threats in year 15 will differ from threats at launch.</li>
+  <li><strong>Deployment environment:</strong> A gateway in a locked IT room has a different physical threat model than one on a customer's exterior wall.</li>
+</ul>
+
+<p>"Adequate" security for a debug interface means: the controls in place are proportionate to the realistic threat, documented, verifiable, and maintainable over the product's lifetime. It is not a destination — it is a defensible, evidence-backed position that must be re-evaluated at each major release.</p>
+
+<h3>11.2 The SSDL Phased Roadmap</h3>
+
+<!-- ===== TIMELINE SVG ===== -->
+<div class="svg-wrap">
+<svg viewBox="0 0 860 365" xmlns="http://www.w3.org/2000/svg" aria-label="Four-phase SSDL roadmap timeline">
+  <defs>
+    <!-- Gradient fills for chevrons -->
+    <linearGradient id="ph1g" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#16a085"/><stop offset="100%" stop-color="#1abc9c"/></linearGradient>
+    <linearGradient id="ph2g" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#2980b9"/><stop offset="100%" stop-color="#3498db"/></linearGradient>
+    <linearGradient id="ph3g" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#8e44ad"/><stop offset="100%" stop-color="#9b59b6"/></linearGradient>
+    <linearGradient id="ph4g" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#c0392b"/><stop offset="100%" stop-color="#e74c3c"/></linearGradient>
+    <!-- Icon circle fills -->
+    <radialGradient id="ic1" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#1abc9c"/><stop offset="100%" stop-color="#16a085"/></radialGradient>
+    <radialGradient id="ic2" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#3498db"/><stop offset="100%" stop-color="#2980b9"/></radialGradient>
+    <radialGradient id="ic3" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#9b59b6"/><stop offset="100%" stop-color="#8e44ad"/></radialGradient>
+    <radialGradient id="ic4" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#e74c3c"/><stop offset="100%" stop-color="#c0392b"/></radialGradient>
+  </defs>
+
+  <!-- ═══ CHEVRON SHAPES ═══ -->
+  <!-- Phase 1 chevron -->
+  <polygon points="20,138 185,138 205,158 185,178 20,178" fill="url(#ph1g)"/>
+  <!-- Phase 2 chevron -->
+  <polygon points="200,138 365,138 385,158 365,178 200,178" fill="url(#ph2g)"/>
+  <!-- Phase 3 chevron -->
+  <polygon points="380,138 545,138 565,158 545,178 380,178" fill="url(#ph3g)"/>
+  <!-- Phase 4 chevron (no arrow) -->
+  <polygon points="560,138 745,138 760,158 745,178 560,178" fill="url(#ph4g)"/>
+
+  <!-- ═══ CHEVRON LABELS ═══ -->
+  <text x="112" y="154" text-anchor="middle" font-size="13" font-weight="bold" fill="white" font-family="Arial,sans-serif">Phase 1</text>
+  <text x="112" y="170" text-anchor="middle" font-size="10" fill="white" font-family="Arial,sans-serif">IMMEDIATE</text>
+  <text x="292" y="154" text-anchor="middle" font-size="13" font-weight="bold" fill="white" font-family="Arial,sans-serif">Phase 2</text>
+  <text x="292" y="170" text-anchor="middle" font-size="10" fill="white" font-family="Arial,sans-serif">SHORT-TERM</text>
+  <text x="472" y="154" text-anchor="middle" font-size="13" font-weight="bold" fill="white" font-family="Arial,sans-serif">Phase 3</text>
+  <text x="472" y="170" text-anchor="middle" font-size="10" fill="white" font-family="Arial,sans-serif">MEDIUM-TERM</text>
+  <text x="652" y="154" text-anchor="middle" font-size="13" font-weight="bold" fill="white" font-family="Arial,sans-serif">Phase 4</text>
+  <text x="652" y="170" text-anchor="middle" font-size="10" fill="white" font-family="Arial,sans-serif">STRATEGIC</text>
+
+  <!-- ═══ CIRCLES ABOVE (Ph1, Ph3) ═══ -->
+  <!-- Phase 1 circle above -->
+  <line x1="112" y1="138" x2="112" y2="98" stroke="#16a085" stroke-width="2"/>
+  <circle cx="112" cy="68" r="30" fill="url(#ic1)"/>
+  <!-- Clock icon (immediate) -->
+  <circle cx="112" cy="68" r="16" fill="none" stroke="white" stroke-width="2"/>
+  <line x1="112" y1="68" x2="112" y2="58" stroke="white" stroke-width="2" stroke-linecap="round"/>
+  <line x1="112" y1="68" x2="120" y2="72" stroke="white" stroke-width="2" stroke-linecap="round"/>
+
+  <!-- Phase 3 circle above -->
+  <line x1="472" y1="138" x2="472" y2="98" stroke="#8e44ad" stroke-width="2"/>
+  <circle cx="472" cy="68" r="30" fill="url(#ic3)"/>
+  <!-- Shield icon -->
+  <path d="M472,52 L487,58 L487,68 Q487,78 472,84 Q457,78 457,68 L457,58 Z" fill="none" stroke="white" stroke-width="2"/>
+  <text x="472" y="73" text-anchor="middle" font-size="12" fill="white" font-family="Arial,sans-serif">✓</text>
+
+  <!-- ═══ CIRCLES BELOW (Ph2, Ph4) ═══ -->
+  <!-- Phase 2 circle below -->
+  <line x1="292" y1="178" x2="292" y2="218" stroke="#2980b9" stroke-width="2"/>
+  <circle cx="292" cy="248" r="30" fill="url(#ic2)"/>
+  <!-- Lock icon -->
+  <rect x="282" y="250" width="20" height="14" rx="3" fill="white"/>
+  <path d="M284,250 L284,244 Q292,236 300,244 L300,250" fill="none" stroke="white" stroke-width="2"/>
+
+  <!-- Phase 4 circle below -->
+  <line x1="652" y1="178" x2="652" y2="218" stroke="#c0392b" stroke-width="2"/>
+  <circle cx="652" cy="248" r="30" fill="url(#ic4)"/>
+  <!-- Star/key icon -->
+  <text x="652" y="256" text-anchor="middle" font-size="20" fill="white" font-family="Arial,sans-serif">★</text>
+
+  <!-- ═══ TEXT DESCRIPTIONS ABOVE ═══ -->
+  <!-- Phase 1 above text box -->
+  <rect x="10" y="4" width="204" height="60" rx="6" fill="#e8f8f5" stroke="#16a085" stroke-width="1"/>
+  <text x="20"  y="21" font-size="9.5" font-weight="bold" fill="#16a085" font-family="Arial,sans-serif">≤ 30 days · Zero/Low Effort</text>
+  <text x="20"  y="34" font-size="9"  fill="#333" font-family="Arial,sans-serif">• bootdelay=-2 (1 config line)</text>
+  <text x="20"  y="46" font-size="9"  fill="#333" font-family="Arial,sans-serif">• loglevel=0 console=null</text>
+  <text x="20"  y="58" font-size="9"  fill="#333" font-family="Arial,sans-serif">• Disable getty · CI/CD gate</text>
+
+  <!-- Phase 3 above text box -->
+  <rect x="370" y="4" width="204" height="60" rx="6" fill="#f5eef8" stroke="#8e44ad" stroke-width="1"/>
+  <text x="380" y="21" font-size="9.5" font-weight="bold" fill="#8e44ad" font-family="Arial,sans-serif">3–6 months · Roadmap Investment</text>
+  <text x="380" y="34" font-size="9"  fill="#333" font-family="Arial,sans-serif">• Signed debug tokens (JWT)</text>
+  <text x="380" y="46" font-size="9"  fill="#333" font-family="Arial,sans-serif">• Encrypted cloud telemetry</text>
+  <text x="380" y="58" font-size="9"  fill="#333" font-family="Arial,sans-serif">• 4-state device mode · JTAG fuse</text>
+
+  <!-- ═══ TEXT DESCRIPTIONS BELOW ═══ -->
+  <!-- Phase 2 below text box -->
+  <rect x="190" y="285" width="204" height="60" rx="6" fill="#ebf5fb" stroke="#2980b9" stroke-width="1"/>
+  <text x="200" y="299" font-size="9.5" font-weight="bold" fill="#2980b9" font-family="Arial,sans-serif">1–2 Releases · Medium Effort</text>
+  <text x="200" y="312" font-size="9"  fill="#333" font-family="Arial,sans-serif">• Auth serial console (HMAC)</text>
+  <text x="200" y="324" font-size="9"  fill="#333" font-family="Arial,sans-serif">• pstore crash logging</text>
+  <text x="200" y="336" font-size="9"  fill="#333" font-family="Arial,sans-serif">• Remote log via HTTPS/MQTT TLS</text>
+
+  <!-- Phase 4 below text box -->
+  <rect x="550" y="285" width="210" height="60" rx="6" fill="#fdf2f2" stroke="#c0392b" stroke-width="1"/>
+  <text x="560" y="299" font-size="9.5" font-weight="bold" fill="#c0392b" font-family="Arial,sans-serif">Multi-release · Programme Level</text>
+  <text x="560" y="312" font-size="9"  fill="#333" font-family="Arial,sans-serif">• HSM key provisioning at mfg</text>
+  <text x="560" y="324" font-size="9"  fill="#333" font-family="Arial,sans-serif">• NXP i.MX93 DAT (RMA)</text>
+  <text x="560" y="336" font-size="9"  fill="#333" font-family="Arial,sans-serif">• Full SSDL + pen test cadence</text>
+</svg>
+<p style="font-size:.8rem;color:#888;margin-top:.2rem;">Figure 10 — Four-phase SSDL roadmap. Phase 1 items are non-negotiable: they cost less than one engineer-day collectively and eliminate the highest-severity vulnerabilities.</p>
+</div>
+
+<h3>11.3 SSDL Gate Integration</h3>
+<table>
+<thead><tr><th>SSDL Gate</th><th>Debug Interface Check</th><th>Owner</th></tr></thead>
+<tbody>
+<tr><td>Requirements</td><td>Include debug interface security requirements in product backlog with acceptance criteria</td><td>Product Security</td></tr>
+<tr><td>Architecture Review</td><td>STRIDE threat model all new physical interfaces; document in Technical File</td><td>Security Architect</td></tr>
+<tr><td>Build Pipeline (CI)</td><td>Automated check: production image must have bootdelay=-2, loglevel=0, no getty on serial port</td><td>DevSecOps</td></tr>
+<tr><td>Pre-Release Security Test</td><td>Penetration test: attempt UART shell access, U-Boot interrupt, JTAG connection on production image</td><td>Pen Test / QA</td></tr>
+<tr><td>Firmware Release Gate</td><td>Security sign-off: debug interface inventory verified, residual risks documented and accepted</td><td>CISO / Product Security Lead</td></tr>
+<tr><td>Post-Release Monitoring</td><td>Monitor CVE feeds for kernel/bootloader versions; re-evaluate controls when new exploits emerge</td><td>Security Operations</td></tr>
+</tbody>
+</table>
+
+<!-- ===== 12 ===== -->
+<h2>12. The Four-State Device Architecture</h2>
+
+<div class="svg-wrap">
+<svg viewBox="0 0 760 290" xmlns="http://www.w3.org/2000/svg" aria-label="Four-state device architecture">
+  <defs><marker id="arr6" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" fill="#555"/></marker>
+  <marker id="arr6b" markerWidth="9" markerHeight="9" refX="1" refY="4.5" orient="auto"><path d="M9,0 L0,4.5 L9,9 Z" fill="#555"/></marker></defs>
+
+  <!-- Production box -->
+  <rect x="280" y="10" width="200" height="90" rx="10" fill="#2c3e50"/>
+  <text x="380" y="38"  text-anchor="middle" font-size="13" font-weight="bold" fill="white"   font-family="Arial,sans-serif">PRODUCTION</text>
+  <text x="380" y="53"  text-anchor="middle" font-size="9.5" fill="#aaa" font-family="Arial,sans-serif">Default state (factory)</text>
+  <text x="380" y="66"  text-anchor="middle" font-size="9"  fill="#7fb3d3" font-family="Arial,sans-serif">UART TX filtered · RX disabled</text>
+  <text x="380" y="79"  text-anchor="middle" font-size="9"  fill="#7fb3d3" font-family="Arial,sans-serif">JTAG fused off · Secure boot on</text>
+  <text x="380" y="92"  text-anchor="middle" font-size="9"  fill="#aaa"    font-family="Arial,sans-serif">Logs → cloud (WARNING level)</text>
+
+  <!-- Service mode box -->
+  <rect x="10" y="140" width="210" height="90" rx="10" fill="#16a085"/>
+  <text x="115" y="168" text-anchor="middle" font-size="12" font-weight="bold" fill="white"  font-family="Arial,sans-serif">AUTHORISED SERVICE</text>
+  <text x="115" y="183" text-anchor="middle" font-size="9.5" fill="#d5f5e3" font-family="Arial,sans-serif">Activated by signed token</text>
+  <text x="115" y="196" text-anchor="middle" font-size="9"  fill="white" font-family="Arial,sans-serif">Auth UART shell · DEBUG logs</text>
+  <text x="115" y="209" text-anchor="middle" font-size="9"  fill="white" font-family="Arial,sans-serif">Auto-expires: 4 hrs or reboot</text>
+  <text x="115" y="222" text-anchor="middle" font-size="9"  fill="#d5f5e3" font-family="Arial,sans-serif">Events logged to audit trail</text>
+
+  <!-- Recovery box -->
+  <rect x="540" y="140" width="210" height="90" rx="10" fill="#e67e00"/>
+  <text x="645" y="168" text-anchor="middle" font-size="12" font-weight="bold" fill="white"   font-family="Arial,sans-serif">RECOVERY</text>
+  <text x="645" y="183" text-anchor="middle" font-size="9.5" fill="#fdebd0" font-family="Arial,sans-serif">Authenticated OTA recovery</text>
+  <text x="645" y="196" text-anchor="middle" font-size="9"  fill="white" font-family="Arial,sans-serif">Minimal boot progress only</text>
+  <text x="645" y="209" text-anchor="middle" font-size="9"  fill="white" font-family="Arial,sans-serif">Firmware signature enforced</text>
+  <text x="645" y="222" text-anchor="middle" font-size="9"  fill="#fdebd0" font-family="Arial,sans-serif">Auto-reverts to Production</text>
+
+  <!-- Development box (separate lane) -->
+  <rect x="280" y="210" width="200" height="70" rx="10" fill="#7f8c8d" opacity=".85"/>
+  <text x="380" y="232" text-anchor="middle" font-size="12" font-weight="bold" fill="white"   font-family="Arial,sans-serif">DEVELOPMENT</text>
+  <text x="380" y="247" text-anchor="middle" font-size="9"  fill="#ecf0f1" font-family="Arial,sans-serif">Build-time flag only (not in prod)</text>
+  <text x="380" y="260" text-anchor="middle" font-size="9"  fill="#ecf0f1" font-family="Arial,sans-serif">Full UART · JTAG open · DEBUG all</text>
+  <text x="380" y="273" text-anchor="middle" font-size="9"  fill="#f1948a" font-family="Arial,sans-serif">Engineering lab ONLY</text>
+
+  <!-- Arrows Production ↔ Service -->
+  <line x1="280" y1="75" x2="220" y2="150" stroke="#555" stroke-width="1.5" stroke-dasharray="6,3" marker-end="url(#arr6)"/>
+  <text x="225" y="110" text-anchor="middle" font-size="8.5" fill="#888" font-family="Arial,sans-serif" transform="rotate(-34,225,110)">signed token</text>
+  <line x1="220" y1="150" x2="280" y2="80" stroke="#555" stroke-width="1.5" stroke-dasharray="6,3" marker-end="url(#arr6)"/>
+  <text x="250" y="128" text-anchor="middle" font-size="8.5" fill="#888" font-family="Arial,sans-serif" transform="rotate(-34,250,128)">auto-revert</text>
+
+  <!-- Arrows Production ↔ Recovery -->
+  <line x1="480" y1="75" x2="540" y2="150" stroke="#555" stroke-width="1.5" stroke-dasharray="6,3" marker-end="url(#arr6)"/>
+  <text x="530" y="108" text-anchor="middle" font-size="8.5" fill="#888" font-family="Arial,sans-serif" transform="rotate(34,530,108)">OTA recovery</text>
+  <line x1="540" y1="150" x2="480" y2="80" stroke="#555" stroke-width="1.5" stroke-dasharray="6,3" marker-end="url(#arr6)"/>
+  <text x="510" y="130" text-anchor="middle" font-size="8.5" fill="#888" font-family="Arial,sans-serif" transform="rotate(34,510,130)">on success</text>
+
+  <!-- Dashed border around Dev box -->
+  <rect x="275" y="205" width="210" height="80" rx="10" fill="none" stroke="#c0392b" stroke-width="2" stroke-dasharray="8,4"/>
+  <text x="490" y="215" font-size="9" fill="#c0392b" font-family="Arial,sans-serif">build-time enforced</text>
+</svg>
+<p style="font-size:.8rem;color:#888;margin-top:.2rem;">Figure 11 — Four-state device architecture. States 1–3 run on the same signed firmware binary; state 4 is a build-time variant. Transitions between production states require authenticated tokens.</p>
+</div>
+
+<!-- ===== 13 ===== -->
+<h2>13. What Security Teams Should Demand as Evidence</h2>
+<p>Rather than a blanket requirement, ask engineering to demonstrate control. The following framework produces a defensible CRA Technical File entry for each interface.</p>
+<table>
+<thead><tr><th>Assessment Area</th><th>Questions Engineering Must Answer</th></tr></thead>
+<tbody>
+<tr><td>Interface Inventory</td><td>What physical interfaces exist? UART, JTAG, SWD, USB, RS-485, test pads?</td></tr>
+<tr><td>Physical Accessibility</td><td>Reachable without opening enclosure? After opening? What tools required?</td></tr>
+<tr><td>Confidentiality</td><td>What information can be extracted? Version, topology, credentials, behavioral patterns?</td></tr>
+<tr><td>Integrity</td><td>Can an attacker modify system state, firmware, configuration, or boot arguments?</td></tr>
+<tr><td>Availability</td><td>Can an attacker disrupt normal operation, trigger a reboot, or deny service?</td></tr>
+<tr><td>Authentication</td><td>Is access restricted to authorised personnel? What is the authentication mechanism?</td></tr>
+<tr><td>Production Default</td><td>What is the state of this interface when the device leaves the factory? Is that enforced by the build system?</td></tr>
+<tr><td>Authorised Serviceability</td><td>How can authorised engineers and FSTs perform legitimate diagnostics?</td></tr>
+<tr><td>Recovery Path</td><td>How can a failed device be recovered without compromising security controls?</td></tr>
+<tr><td>Verification</td><td>How is the implemented control verified? CI test? Penetration test result? Code review?</td></tr>
+</tbody>
+</table>
+
+<!-- ===== 14 ===== -->
+<h2>14. Better Requirement Language</h2>
+
+<h3>What Not to Write</h3>
+<blockquote>"All UART, JTAG, and debugging interfaces shall be disabled in production."</blockquote>
+<p>This is unenforceable (what does "disabled" mean for a UART TX-only log path?), creates adversarial engineering relationships, and fails a compliance audit because it doesn't map to a verifiable security outcome.</p>
+
+<h3>What to Write Instead</h3>
+<div class="cg">
+"All debugging, diagnostic, and manufacturing interfaces shall be assessed for their potential to expose sensitive information, enable unauthorised access, modify product functionality, or compromise system availability. Interfaces providing privileged access to system resources (bootloader console, root shell, unauthenticated JTAG) shall be disabled or hardware-locked in production configurations. Interfaces required for legitimate diagnostic, maintenance, or recovery operations shall implement authentication, authorisation, time-limiting, and audit logging proportionate to the risk they present. Production configurations shall enforce secure defaults for all interfaces; enabling any diagnostic access shall be appropriately restricted, documented, and reversible. All interface security controls shall be verified by automated CI checks and periodic penetration testing."
+</div>
+<p class="cvé-note">This language gives engineering implementation flexibility, defines verifiable security outcomes, maps directly to CRA Annex I §1(b)(d)(e)(g)(i) and EN 18031-1 ACM-5, and survives a notified body assessment.</p>
+
+<!-- ===== 15 ===== -->
+<h2>15. Compliance Verdict Table</h2>
+
+<table>
+<thead>
+<tr><th>Interface State</th><th>CRA §1(b)</th><th>CRA §1(g)</th><th>EN 18031-1 ACM-5</th><th>Verdict</th></tr>
+</thead>
+<tbody>
+<tr><td>Open U-Boot shell (bootdelay &gt; 0)</td><td style="color:#cc0000;font-weight:bold">FAIL</td><td style="color:#cc0000;font-weight:bold">FAIL</td><td style="color:#cc0000;font-weight:bold">FAIL</td><td style="color:#cc0000;font-weight:bold">Non-compliant</td></tr>
+<tr><td>Root serial console (getty, no auth)</td><td style="color:#cc0000;font-weight:bold">FAIL</td><td style="color:#cc0000;font-weight:bold">FAIL</td><td style="color:#cc0000;font-weight:bold">FAIL</td><td style="color:#cc0000;font-weight:bold">Non-compliant</td></tr>
+<tr><td>Kernel printk to serial (default)</td><td style="color:#e67e00;font-weight:bold">RISK</td><td style="color:#e67e00;font-weight:bold">RISK</td><td style="color:#e67e00;font-weight:bold">RISK</td><td style="color:#e67e00;font-weight:bold">Requires documented justification</td></tr>
+<tr><td>Unauthenticated JTAG (production device)</td><td style="color:#cc0000;font-weight:bold">FAIL</td><td style="color:#cc0000;font-weight:bold">FAIL</td><td style="color:#cc0000;font-weight:bold">FAIL</td><td style="color:#cc0000;font-weight:bold">Non-compliant</td></tr>
+<tr><td>UART TX only, kernel log suppressed, filtered app log</td><td style="color:#2e7d32;font-weight:bold">PASS</td><td style="color:#e67e00;font-weight:bold">PARTIAL</td><td style="color:#e67e00;font-weight:bold">PARTIAL</td><td style="color:#e67e00;font-weight:bold">Acceptable with risk documentation</td></tr>
+<tr><td>UART TX only, encrypted per-device log stream</td><td style="color:#2e7d32;font-weight:bold">PASS</td><td style="color:#2e7d32;font-weight:bold">PASS</td><td style="color:#2e7d32;font-weight:bold">PASS</td><td style="color:#2e7d32;font-weight:bold">Compliant (bootloader hardened)</td></tr>
+<tr><td>Authenticated serial console (HMAC gate)</td><td style="color:#2e7d32;font-weight:bold">PASS</td><td style="color:#2e7d32;font-weight:bold">PASS</td><td style="color:#2e7d32;font-weight:bold">PASS</td><td style="color:#2e7d32;font-weight:bold">Compliant</td></tr>
+<tr><td>JTAG with NXP DAT (ELE PKI) — RMA only</td><td style="color:#2e7d32;font-weight:bold">PASS</td><td style="color:#2e7d32;font-weight:bold">PASS</td><td style="color:#2e7d32;font-weight:bold">PASS</td><td style="color:#2e7d32;font-weight:bold">Compliant (RMA context only)</td></tr>
+<tr><td>bootdelay=-2 · loglevel=0 · no getty</td><td style="color:#2e7d32;font-weight:bold">PASS</td><td style="color:#2e7d32;font-weight:bold">PASS</td><td style="color:#2e7d32;font-weight:bold">PASS</td><td style="color:#2e7d32;font-weight:bold">Compliant baseline — minimum Phase 1</td></tr>
+</tbody>
+</table>
+
+<!-- ===== 16 ===== -->
+<h2>16. Conclusion</h2>
+
+<p>The debate between security teams and engineering teams over debug and serial interfaces is not a disagreement about values — both sides want the product to work reliably and securely. It is a disagreement about implementation specifics that stems from an imprecise framing of what the regulation actually requires.</p>
+
+<p>CRA and RED-DA require security <em>outcomes</em>: minimised attack surfaces, no known exploitable vulnerabilities, protected confidentiality and integrity, authenticated access to privileged interfaces. They do not require the elimination of diagnostic capability. What they prohibit is the casual, unauthenticated exposure of privileged system access — which is exactly what an open U-Boot console, a root serial shell, and an unauthenticated JTAG port represent.</p>
+
+<div class="cb">
+<p>The question should not be: <em>"Should we disable UART and JTAG?"</em></p>
+<p>The question should be: <em>"How do we ensure that diagnostic and debugging capabilities cannot be abused by unauthorised entities while remaining available to authorised personnel when operationally necessary — and how do we document and verify that?"</em></p>
+<p>That is the difference between disabling functionality and engineering a secure product. Security, usability, and operability are not competing objectives. A mature product security architecture delivers all three.</p>
+</div>
+
+<hr>
+
+<h2>References</h2>
+<ol>
+<li>Regulation (EU) 2024/2847 — Cyber Resilience Act. EUR-Lex: 32024R2847.</li>
+<li>Commission Delegated Regulation (EU) 2022/30 — RED Delegated Act. EUR-Lex: 32022R0030.</li>
+<li>ETSI EN 303 645 v2.1.1 — Cyber Security for Consumer Internet of Things: Baseline Requirements. ETSI, 2021.</li>
+<li>EN 18031-1:2024 — Radio Equipment Cybersecurity — Internet Connected Radio Equipment. CEN/CENELEC, 2024.</li>
+<li>Commission Implementing Decision (EU) 2025/138 — Harmonised standards for RED cybersecurity. EUR-Lex.</li>
+<li>IEC 62443-4-2:2019 — Security for industrial automation and control systems: Technical security requirements for IACS components.</li>
+<li>IEC 62351-5 — Power Systems Management and Associated Information Exchange: Security for IEC 60870-5 and derivatives (Secure Modbus).</li>
+<li>NIST SP 800-193 — Platform Firmware Resiliency Guidelines. NIST, 2018.</li>
+<li>Keen Security Lab, "Free-Fall: Hacking Tesla from Wireless to CAN Bus." DEF CON 25, 2017.</li>
+<li>Bryan, D. &amp; Crowley, D., "SCADA and ICS for Security Experts." DEF CON 21, 2013.</li>
+<li>Bitdefender Labs, "Ring Video Doorbell Security Analysis." 2019.</li>
+<li>NXP Semiconductors, "i.MX 93 Security Reference Manual — EdgeLock Secure Enclave and Debug Authentication." IMX93SRM, 2023.</li>
+<li>NXP Application Note AN13250 — "Debug Authentication on i.MX 8/9 Series Devices."</li>
+<li>Zephyr Project Documentation — Shell and Logging Subsystems. docs.zephyrproject.org.</li>
+<li>MCUboot Documentation — Serial Recovery Interface. docs.mcuboot.com.</li>
+<li>CISA ICS-CERT Advisory ICSA-22-083-01 — Multiple Vulnerabilities in Solar Power Products.</li>
+<li>Project Basecamp — DigitalBond Research on ICS Serial Interface Vulnerabilities, 2012.</li>
+<li>CVE-2016-10401 — Zyxel PK5001Z default credential exploitation (Mirai component).</li>
+<li>CVE-2017-17215 — Huawei HG532 remote code execution (Mirai Satori component).</li>
+<li>CVE-2022-0847 — DirtyPipe, Linux kernel 5.8+. Example of kernel version-correlated exploit.</li>
+</ol>
+
+<hr>
+<p style="font-size:.78rem; color:#999;">This article reflects the state of CRA and RED-DA as of November 2026. Harmonized standard designations and applicability dates are subject to change as the European Commission updates its implementing decisions. Always verify current standard harmonization status before submitting a Technical File or Declaration of Conformity.</p>
+
+</body>
+</html>
